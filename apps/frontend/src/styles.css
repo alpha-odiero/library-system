@@ -2571,8 +2571,8 @@ code.code {
  * canvas, #64748b muted — with two hard-coded navy bands (#101b3d) for the hero
  * and the analytics strip. The navy is the one colour the token system does not
  * carry, and it is fixed across both themes because a brand band that flips with
- * the theme stops being a brand band. The hero sits on `hero.jpg` behind a navy
- * ramp and the closing call to action on `student-reading.jpg` behind a gradient;
+ * the theme stops being a brand band. The hero sits on `hero.webp` behind a navy
+ * ramp and the closing call to action on `student-reading.webp` behind a gradient;
  * in both, the photograph is a backdrop and the type sits on a scrim, never
  * directly on the picture.
  *
@@ -2810,7 +2810,7 @@ code.code {
    picture of the product sits on the right so the first screen answers "what is
    this?" without the reader having to scroll for it.
 
-   `hero.jpg` runs underneath as atmosphere only: the horizontal ramp is 97%
+   `hero.webp` runs underneath as atmosphere only: the horizontal ramp is 97%
    opaque where the copy sits and thins to 60% behind the preview, so the
    photograph is legible on the right and invisible under the headline. The
    photograph returns once more in the closing call to action, where there is
@@ -2828,7 +2828,7 @@ code.code {
       rgb(16 27 61 / 93%) 44%,
       rgb(16 27 61 / 60%) 100%
     ),
-    url('./assets/hero.jpg') center / cover no-repeat,
+    url('./assets/hero.webp') center / cover no-repeat,
     #101b3d;
   color: #ffffff;
 }
@@ -2852,7 +2852,7 @@ code.code {
       rgb(29 78 216 / 38%) 55%,
       rgb(29 78 216 / 24%) 100%
     ),
-    url('./assets/landing%20back.jpg') center / cover no-repeat,
+    url('./assets/landing-back.webp') center / cover no-repeat,
     #1d4ed8;
   text-align: center;
 }
@@ -3530,7 +3530,7 @@ code.code {
 .landing__cta-band {
   background:
     linear-gradient(rgb(15 23 42 / 74%), rgb(30 64 175 / 70%)),
-    url('./assets/student-reading.jpg') center / cover no-repeat,
+    url('./assets/student-reading.webp') center / cover no-repeat,
     #2563eb;
   color: #ffffff;
 }

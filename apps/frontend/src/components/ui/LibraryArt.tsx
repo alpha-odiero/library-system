@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import libraryImage from '../../assets/sider.png';
+import libraryImage from '../../assets/sider.webp';
 
 /**
  * The shared library artwork.

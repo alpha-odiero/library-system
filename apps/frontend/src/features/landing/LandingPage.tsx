@@ -6,9 +6,9 @@ import { Brand } from '../../components/ui/Brand';
 import { Button } from '../../components/ui/Button';
 import { Icon, type IconName } from '../../components/ui/Icon';
 import { paths } from '../../routes/paths';
-import aboutPhoto from '../../assets/about us.jpg';
-import analyticsShot from '../../assets/Analytics-removebg-preview.png';
-import heroShot from '../../assets/hero sider.png';
+import aboutPhoto from '../../assets/about-us.webp';
+import analyticsShot from '../../assets/analytics-preview.webp';
+import heroShot from '../../assets/hero-sider.webp';
 
 /**
  * The public landing page.

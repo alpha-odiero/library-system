@@ -232,18 +232,20 @@ export async function getBorrowingPolicy(): Promise<BorrowingPolicy> {
  * The only settings readable before authentication.
  *
  * `GET /api/v1/settings/public` is unauthenticated (it is in `PUBLIC_ROUTES`),
- * so it returns ONLY rows flagged `is_public` in the database. The filter lives
- * in the SQL, not in a projection — selecting more and hiding it is the exact
- * pattern the docs forbid.
+ * so it returns ONLY rows flagged `is_public` in the database — the filter runs
+ * over the cached set and non-public rows never leave the server. Reads share
+ * the same short-TTL cache as the circulation code, so the boot-time calls the
+ * sign-in screen makes on every visit stop hitting the database after the
+ * first; a live write invalidates the cache in the same statement.
  */
 export async function getPublicSettings(): Promise<Record<string, unknown>> {
-  const rows = await prisma.setting.findMany({
-    where: { isPublic: true },
-    select: { key: true, value: true, valueType: true },
-    orderBy: { key: 'asc' },
-  });
-
-  return Object.fromEntries(rows.map((row) => [row.key, row.value]));
+  const rows = await cachedAll();
+  return Object.fromEntries(
+    [...rows.values()]
+      .filter((row) => row.isPublic)
+      .sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
+      .map((row) => [row.key, row.value]),
+  );
 }
 
 /** Every setting, grouped by category. `SETTINGS_VIEW` only. */

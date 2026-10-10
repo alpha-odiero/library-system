@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
-import darkLogo from '../../assets/dark.png';
-import lightLogo from '../../assets/light.png';
+import darkLogo from '../../assets/dark.webp';
+import lightLogo from '../../assets/light.webp';
 import { useTheme } from '../../contexts/ThemeContext';
 
 export function Brand({ compact = false }: { compact?: boolean }): ReactNode {
