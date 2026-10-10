@@ -1,23 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <!-- Soma360 is a single-page application behind a sign-in. The marketing
+       landing page is the only publicly accessible page that should appear in
+       search engines. Every other route is an auth flow (login, registration,
+       password reset, email verification) or the authenticated application
+       (dashboards, catalogue, circulation, reports), so it is neither listed
+       here nor indexable - those pages return robots `noindex, follow` at
+       runtime (see src/app/pageMeta.ts). -->
   <url>
     <loc>https://library-system-ashy-rho.vercel.app/welcome</loc>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
-  </url>
-  <url>
-    <loc>https://library-system-ashy-rho.vercel.app/register</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://library-system-ashy-rho.vercel.app/login</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.6</priority>
-  </url>
-  <url>
-    <loc>https://library-system-ashy-rho.vercel.app/forgot-password</loc>
-    <changefreq>yearly</changefreq>
-    <priority>0.4</priority>
   </url>
 </urlset>

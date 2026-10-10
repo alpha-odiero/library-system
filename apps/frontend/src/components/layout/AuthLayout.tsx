@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { useTheme } from '../../contexts/ThemeContext';
+import { usePageMeta } from '../../app/pageMeta';
 import { usePublicSettings } from '../../app/usePublicSettings';
 import { paths } from '../../routes/paths';
 import { Button } from '../ui/Button';
@@ -34,6 +35,9 @@ export function AuthLayout({
   footer?: ReactNode | undefined;
 }): ReactNode {
   const { theme, toggleTheme } = useTheme();
+  // Sign-in, registration, reset and verification screens are not content a
+  // search engine should index; give each its own tab title and noindex them.
+  usePageMeta({ title: `${title} · Soma360`, robots: 'noindex, follow' });
   // The landing-page link names the organisation, so it must not read "Learn more
   // about Soma360" on a library that has renamed itself in settings.
   const orgName = usePublicSettings()?.['org.name'] ?? 'Soma360';

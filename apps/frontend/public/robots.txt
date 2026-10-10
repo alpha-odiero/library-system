@@ -1,3 +1,7 @@
+# Everything is allowed to be crawled. The only indexable content is the
+# public landing page; auth-flow and authenticated pages are absent from the
+# sitemap and the app returns `noindex, follow` for them at runtime, so search
+# engines are free to fetch those pages (and therefore see the noindex).
 User-agent: *
 Allow: /
 

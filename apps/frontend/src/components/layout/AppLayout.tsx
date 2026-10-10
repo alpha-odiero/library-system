@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
+import { usePageMeta } from '../../app/pageMeta';
 import { displayInitials, displayName } from '../../lib/contracts';
 import { subscribeToRealtime } from '../../lib/realtime';
 import {
@@ -62,6 +63,9 @@ export function AppLayout(): ReactNode {
   // Close the drawer on navigation: on a phone it covers the page the user just
   // asked for, and nothing in the flow would close it for them.
   useEffect(() => setDrawerOpen(false), [location.pathname]);
+
+  // Dashboards, registers and member data must not appear in search engines.
+  usePageMeta({ robots: 'noindex, follow' });
 
   useEffect(() => {
     document.title = `${pageTitle(location.pathname)} · Soma360`;
