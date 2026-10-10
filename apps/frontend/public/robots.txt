@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://library-system-ashy-rho.vercel.app/sitemap.xml
