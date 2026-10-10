@@ -264,6 +264,22 @@ which is what a deployment gate asserts against.
 Both are unauthenticated, are excluded from the rate limiter, and sit outside
 `/api/v1` so a probe never depends on the API version.
 
+## Keep-warm (free tier only)
+
+The Render free plan spins the API instance down after ~15 min idle, so the
+next request pays a cold start — and if several dashboard requests arrive while
+still warming, they can trip their client timeout and the panels show as
+failed. While the account is on the free plan, `.github/workflows/keep-warm.yml`
+pings `GET /health` every 10 minutes (cron in UTC) so the instance rarely
+idles. `/health` never touches the database, so the ping costs nothing.
+
+This is a placeholder for the real fix: an always-on plan removes the idle
+sweep and the CPU throttle entirely. Render cron jobs would do the pinging
+natively but require a paid plan (`free` is rejected for them). GitHub Actions
+is free only while this repository is public — if it ever goes private, the
+scheduled runs consume the private-repo minute quota and the workflow should
+be retired in favor of a paid plan or an external uptime pinger.
+
 ## Rollback
 
 **Code rollback is safe. Migration rollback is not.**

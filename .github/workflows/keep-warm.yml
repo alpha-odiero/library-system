@@ -1,0 +1,15 @@
+name: Keep Render instance warm
+
+on:
+  schedule:
+    # Worst case the free instance idles out after 15 minutes; a ping every ten
+    # keeps it awake without touching the database (/health never queries it).
+    - cron: '*/10 * * * *'
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Hit API health
+        run: curl --fail --silent --show-error --max-time 30 https://library-system-jdge.onrender.com/health
