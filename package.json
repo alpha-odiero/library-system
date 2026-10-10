@@ -1,0 +1,41 @@
+{
+  "name": "library-management-system",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Production-grade multi-branch library management platform",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=20.11.0"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace @lms/backend",
+    "dev:frontend": "npm run dev --workspace @lms/frontend",
+    "build": "npm run build --workspace @lms/shared && npm run build --workspace @lms/backend && npm run build --workspace @lms/frontend",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "format": "prettier --write \"**/*.{ts,tsx,json,md,yml,yaml}\" && npm run db:format --workspace @lms/backend",
+    "format:check": "prettier --check \"**/*.{ts,tsx,json,md,yml,yaml}\" && npm run db:validate",
+    "test": "npm run test --workspaces --if-present",
+    "db:generate": "npm run prisma:generate --workspace @lms/backend",
+    "db:migrate": "npm run db:migrate --workspace @lms/backend",
+    "db:migrate:deploy": "npm run db:migrate:deploy --workspace @lms/backend",
+    "db:seed": "npm run db:seed --workspace @lms/backend",
+    "db:studio": "npm run db:studio --workspace @lms/backend",
+    "db:validate": "npm run db:validate --workspace @lms/backend",
+    "db:drift": "npm run db:drift --workspace @lms/backend",
+    "db:invariants": "npm run db:invariants --workspace @lms/backend",
+    "db:deploy": "npm run db:deploy --workspace @lms/backend",
+    "openapi": "npm run openapi --workspace @lms/backend",
+    "openapi:check": "npm run openapi --workspace @lms/backend -- --check",
+    "audit:check": "node scripts/check-audit.mjs"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^4.1.11",
+    "prettier": "3.6.2",
+    "vitest": "^4.1.11"
+  }
+}

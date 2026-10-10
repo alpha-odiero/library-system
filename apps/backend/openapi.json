@@ -1,0 +1,358 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Library Management System API",
+    "version": "1.0.0",
+    "description": "Multi-branch library management API.\n\n**The API is the security boundary.** Authorisation is enforced per request from the caller’s permissions, derived from their roles and library scope. Hiding a control in the frontend grants nothing.\n\nConventions:\n- All responses use the `{ success, data }` / `{ success, error }` envelope.\n- Money is a fixed-scale decimal string (`Decimal(14,2)`), never a float.\n- Timestamps are ISO 8601 with an explicit offset; the library timezone is `Africa/Nairobi`.\n- Dates without a time (loan due dates) are `YYYY-MM-DD` calendar dates in the library timezone.\n- List endpoints are paginated (default 20, max 100).",
+    "license": {
+      "name": "UNLICENSED",
+      "identifier": "UNLICENSED"
+    }
+  },
+  "servers": [
+    {
+      "url": "/api/v1",
+      "description": "Versioned API base path"
+    }
+  ],
+  "tags": [
+    {
+      "name": "system",
+      "description": "Liveness and readiness"
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "operationId": "getHealth",
+        "summary": "Liveness probe",
+        "description": "Reports that the process is running. Intentionally unauthenticated and performs no database query, so it stays green while dependencies are down.",
+        "tags": ["system"],
+        "security": [],
+        "responses": {
+          "500 INTERNAL_ERROR": {
+            "description": "INTERNAL_ERROR",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "description": "Process is alive",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["success", "data"],
+                "properties": {
+                  "success": {
+                    "type": "boolean",
+                    "const": true
+                  },
+                  "data": {
+                    "type": "object",
+                    "properties": {
+                      "status": {
+                        "type": "string",
+                        "examples": ["ok"]
+                      },
+                      "environment": {
+                        "type": "string",
+                        "examples": ["development"]
+                      },
+                      "version": {
+                        "type": "string"
+                      },
+                      "timestamp": {
+                        "type": "string",
+                        "format": "date-time",
+                        "description": "ISO 8601 timestamp with an explicit offset."
+                      },
+                      "uptimeSeconds": {
+                        "type": "number"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ready": {
+      "get": {
+        "operationId": "getReadiness",
+        "summary": "Readiness probe",
+        "description": "Verifies the database is reachable and that all migrations are applied. Returns 503 when the instance cannot serve traffic, so a load balancer stops routing to it.",
+        "tags": ["system"],
+        "security": [],
+        "responses": {
+          "500 INTERNAL_ERROR": {
+            "description": "INTERNAL_ERROR",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503 SERVICE_UNAVAILABLE": {
+            "description": "SERVICE_UNAVAILABLE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503 Service Unavailable": {
+            "description": "A dependency is unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["success", "data"],
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "enum": ["not_ready"]
+                        },
+                        "checks": {
+                          "type": "object",
+                          "properties": {
+                            "database": {
+                              "type": "string"
+                            },
+                            "migrations": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "description": "Instance can serve traffic",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["success", "data"],
+                "properties": {
+                  "success": {
+                    "type": "boolean",
+                    "const": true
+                  },
+                  "data": {
+                    "type": "object",
+                    "properties": {
+                      "status": {
+                        "type": "string",
+                        "const": "ready"
+                      },
+                      "checks": {
+                        "type": "object",
+                        "properties": {
+                          "database": {
+                            "type": "string",
+                            "const": "up"
+                          },
+                          "migrations": {
+                            "type": "string",
+                            "const": "applied"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "sessionCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "lms_session",
+        "description": "Opaque short-lived session identifier in an `HttpOnly`, `Secure`, `SameSite=Strict` cookie. Refresh tokens rotate on every use and are revoked on reuse."
+      },
+      "csrfToken": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "x-csrf-token",
+        "description": "Required on every state-changing request. Matches the `lms_csrf` cookie, which is readable by JavaScript by design."
+      }
+    },
+    "schemas": {
+      "ErrorEnvelope": {
+        "type": "object",
+        "required": ["success", "error"],
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "const": false
+          },
+          "error": {
+            "type": "object",
+            "required": ["code", "message", "status"],
+            "properties": {
+              "code": {
+                "type": "string",
+                "enum": [
+                  "VALIDATION_ERROR",
+                  "MALFORMED_REQUEST",
+                  "UNSUPPORTED_MEDIA_TYPE",
+                  "UNAUTHENTICATED",
+                  "INVALID_CREDENTIALS",
+                  "TOKEN_EXPIRED",
+                  "TOKEN_INVALID",
+                  "SESSION_REVOKED",
+                  "EMAIL_NOT_VERIFIED",
+                  "ACCOUNT_LOCKED",
+                  "FORBIDDEN",
+                  "INSUFFICIENT_SCOPE",
+                  "NOT_FOUND",
+                  "METHOD_NOT_ALLOWED",
+                  "CONFLICT",
+                  "GONE",
+                  "PAYLOAD_TOO_LARGE",
+                  "UNPROCESSABLE_ENTITY",
+                  "TOO_MANY_REQUESTS",
+                  "INTERNAL_ERROR",
+                  "NOT_IMPLEMENTED",
+                  "SERVICE_UNAVAILABLE",
+                  "TIMEOUT",
+                  "COPY_NOT_AVAILABLE",
+                  "COPY_ALREADY_ON_LOAN",
+                  "COPY_NOT_BORROWABLE",
+                  "LOAN_NOT_ACTIVE",
+                  "LOAN_LIMIT_REACHED",
+                  "LOAN_OVERDUE",
+                  "LOAN_ALREADY_RETURNED",
+                  "RENEWAL_LIMIT_REACHED",
+                  "RENEWAL_BLOCKED_BY_RESERVATION",
+                  "MEMBER_INACTIVE",
+                  "MEMBERSHIP_EXPIRED",
+                  "MEMBER_SUSPENDED",
+                  "MEMBER_ALREADY_REGISTERED",
+                  "MEMBER_HAS_ACTIVE_LOANS",
+                  "OUTSTANDING_BALANCE_TOO_HIGH",
+                  "RESERVATION_DUPLICATE",
+                  "RESERVATION_LIMIT_REACHED",
+                  "RESERVATION_NOT_READY",
+                  "RESERVATION_EXPIRED",
+                  "CANNOT_RESERVE_HELD_COPY",
+                  "BOOK_NOT_LOANABLE",
+                  "FINE_NOT_FOUND",
+                  "FINE_ALREADY_SETTLED",
+                  "FINE_OVERPAYMENT",
+                  "FINE_NOT_WAIVABLE",
+                  "PAYMENT_INVALID",
+                  "PAYMENT_ALREADY_VOIDED",
+                  "COPY_ALREADY_RESERVED",
+                  "SETTINGS_INVALID",
+                  "IMMUTABLE_RECORD",
+                  "IDEMPOTENCY_CONFLICT",
+                  "STALE_RESOURCE_VERSION"
+                ],
+                "description": "Stable machine-readable code. Clients branch on this, never on the message."
+              },
+              "message": {
+                "type": "string",
+                "description": "Human-readable summary."
+              },
+              "status": {
+                "type": "integer",
+                "description": "Mirrors the HTTP status."
+              },
+              "fieldErrors": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "Present on VALIDATION_ERROR only."
+              },
+              "requestId": {
+                "type": "string",
+                "format": "uuid",
+                "description": "Echoed in logs and the `x-request-id` response header."
+              }
+            }
+          }
+        }
+      },
+      "PaginationMeta": {
+        "type": "object",
+        "required": ["page", "limit", "total", "totalPages"],
+        "properties": {
+          "page": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "totalPages": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "Uuid": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "Money": {
+        "type": "string",
+        "pattern": "^\\d+(\\.\\d{2})$",
+        "description": "Decimal amount as a fixed-scale string, e.g. \"1250.00\". Never a float.",
+        "examples": ["1250.00", "0.00"]
+      },
+      "IsoDateTime": {
+        "type": "string",
+        "format": "date-time",
+        "description": "ISO 8601 timestamp with an explicit offset."
+      }
+    }
+  },
+  "security": [
+    {
+      "sessionCookie": [],
+      "csrfToken": []
+    }
+  ]
+}

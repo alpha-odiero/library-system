@@ -1,0 +1,25 @@
+{
+  "$comment": [
+    "Dependency advisories this repository knowingly accepts, asserted by",
+    "scripts/check-audit.mjs in CI.",
+    "",
+    "`npm audit` has no inline exception mechanism, so acceptance is expressed here",
+    "and checked. The assertion is deliberately two-sided: no critical may exist at",
+    "all, and the high-severity set must equal the accepted set exactly. That way an",
+    "accepted advisory cannot quietly outlive its review, and a new one cannot hide",
+    "behind an existing allowance.",
+    "",
+    "Every entry needs a reason and a `reviewed` date. Removing an entry fails the",
+    "build, which is intended: acceptance must be re-decided, not inherited.",
+    "",
+    "The rationale for each accepted advisory is written out in",
+    "docs/security/security-architecture.md."
+  ],
+  "acceptedHigh": [
+    {
+      "packages": ["prisma", "@prisma/config", "deepmerge-ts", "effect"],
+      "reason": "Prisma CLI internals (config loading and RPC plumbing) used by generate, migrate, db:validate, db:drift and db:invariants. No patched stable release exists; npm's only suggestion is a downgrade to 6.12.0, which moves backwards. Not reachable from any request path, and @prisma/client itself carries no advisory.",
+      "reviewed": "2026-10-03"
+    }
+  ]
+}

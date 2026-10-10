@@ -1,0 +1,57 @@
+# Dependencies
+node_modules/
+.pnp/
+.pnp.js
+
+# Build output
+dist/
+build/
+apps/frontend/dist/
+apps/frontend/dev-dist/
+*.tsbuildinfo
+
+# Environment — NEVER commit
+.env
+.env.*
+!.env.example
+*.pem
+
+# Local storage / uploads
+storage/
+apps/backend/storage/
+
+# Test + coverage
+coverage/
+.nyc_output/
+test-results/
+playwright-report/
+blob-report/
+.playwright/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Databases (local dumps are never part of the repo)
+*.sql.gz
+*.dump
+backups/
+
+# Editor / OS
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.example.json
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Misc
+.cache/
+.eslintcache
+*.tmp
+*.orig
+*.rej

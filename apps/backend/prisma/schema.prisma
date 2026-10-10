@@ -1,0 +1,1295 @@
+// Library Management System — Prisma schema
+//
+// Conventions enforced throughout:
+//   • UUID primary keys via gen_random_uuid() (pgcrypto). Non-enumerable and
+//     safe to generate from any writer, including raw SQL jobs.
+//   • timestamptz for every instant; money is always Decimal(14,2), never float.
+//   • Auditability: created_at/updated_at on mutable tables; deleted_at or
+//     archived_at for soft removal of anything with history.
+//   • Deletion behaviour: CASCADE only for ephemeral child rows; RESTRICT for
+//     every financial / circulation / audit relationship so history can never be
+//     deleted out from under a payment.
+//   • Business rules that MUST hold under concurrency (partial unique indexes,
+//     CHECK constraints, append-only triggers) live in
+//     prisma/migrations_sql/ — Prisma cannot express them.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Enums
+// ═══════════════════════════════════════════════════════════════════════════
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  LOCKED
+}
+
+enum MemberStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  EXPIRED
+  PENDING
+}
+
+enum CopyStatus {
+  AVAILABLE
+  BORROWED
+  RESERVED
+  LOST
+  DAMAGED
+  MAINTENANCE
+  REMOVED
+}
+
+enum CopyCondition {
+  NEW
+  LIKE_NEW
+  GOOD
+  FAIR
+  POOR
+  DAMAGED
+}
+
+/// A student's request to borrow a title.
+///
+/// APPROVED and the loan are separate states on purpose: approval means a
+/// librarian committed to issuing, while ISSUED means a Loan row exists. There
+/// is no combined "approved and borrowed" value, because a librarian approving a
+/// request at the desk does not physically hand over the book, and collapsing the
+/// two would mark books as on-loan to students who never received them.
+enum BorrowRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+  EXPIRED
+  /// A loan exists. Terminal.
+  ISSUED
+}
+
+enum LoanStatus {
+  ACTIVE
+  RETURNED
+  OVERDUE
+  LOST
+  DAMAGED
+}
+
+enum ReservationStatus {
+  ACTIVE
+  READY
+  FULFILLED
+  CANCELLED
+  EXPIRED
+}
+
+enum FineType {
+  OVERDUE
+  LOST
+  DAMAGE
+  LATE_RETURN
+  OTHER
+}
+
+enum FineStatus {
+  OUTSTANDING
+  PARTIAL
+  PAID
+  WAIVED
+  VOID
+}
+
+enum PaymentMethod {
+  CASH
+  MPESA
+  BANK
+  CARD
+  OTHER
+}
+
+enum NotificationType {
+  BOOK_DUE_SOON
+  BOOK_OVERDUE
+  RESERVATION_READY
+  FINE_CREATED
+  FINE_PAYMENT
+  BOOK_RETURNED
+  /// A borrow request was filed. Addressed to the librarian queue, not the
+  /// student — the student already knows they filed it.
+  BORROW_REQUEST_SUBMITTED
+  /// To the student: a librarian approved their request. Not the same as
+  /// BORROW_REQUEST_ISSUED, because the copy has not left the building yet.
+  BORROW_REQUEST_APPROVED
+  BORROW_REQUEST_REJECTED
+  BORROW_REQUEST_ISSUED
+  /// To staff: a student's temporary password is ready to be handed over. Carries
+  /// no secret in `data` — the plaintext exists once, in the creation response.
+  ACCOUNT_CREDENTIALS_ISSUED
+  /// New librarian joined the library.
+  LIBRARIAN_ADDED
+  GENERAL
+  SYSTEM
+}
+
+enum AuditAction {
+  LOGIN
+  LOGIN_FAILED
+  LOGOUT
+  LOGOUT_ALL
+  PASSWORD_CHANGED
+  PASSWORD_RESET
+  EMAIL_VERIFIED
+  BOOK_CREATED
+  BOOK_UPDATED
+  BOOK_ARCHIVED
+  BOOK_DELETED
+  AUTHOR_CREATED
+  AUTHOR_UPDATED
+  CATEGORY_CREATED
+  CATEGORY_UPDATED
+  PUBLISHER_CREATED
+  PUBLISHER_UPDATED
+  COPY_CREATED
+  COPY_UPDATED
+  COPY_MOVED
+  COPY_REMOVED
+  MEMBER_CREATED
+  MEMBER_UPDATED
+  MEMBER_DELETED
+  MEMBER_TYPE_CREATED
+  MEMBER_TYPE_UPDATED
+  LOAN_CREATED
+  BOOK_RETURNED
+  BOOK_RENEWED
+  LOAN_MARKED_LOST
+  LOAN_MARKED_DAMAGED
+  RESERVATION_CREATED
+  RESERVATION_CANCELLED
+  RESERVATION_READY
+  RESERVATION_EXPIRED
+  RESERVATION_FULFILLED
+  BORROW_REQUEST_CREATED
+  BORROW_REQUEST_APPROVED
+  BORROW_REQUEST_REJECTED
+  BORROW_REQUEST_CANCELLED
+  BORROW_REQUEST_ISSUED
+  FINE_CREATED
+  FINE_UPDATED
+  FINE_PAID
+  FINE_WAIVED
+  PAYMENT_VOIDED
+  USER_CREATED
+  USER_UPDATED
+  USER_DEACTIVATED
+  ROLE_CHANGED
+  PERMISSION_CHANGED
+  SETTINGS_UPDATED
+  BRANCH_CREATED
+  BRANCH_UPDATED
+  LIBRARY_CREATED
+  LIBRARY_UPDATED
+  /// A staff account's temporary password was set by an admin. The audit row
+  /// records THAT it happened, never the password itself.
+  USER_CREDENTIALS_ISSUED
+  USER_PASSWORD_RESET_BY_ADMIN
+  DIGITAL_RESOURCE_CREATED
+  DIGITAL_RESOURCE_DELETED
+  DIGITAL_ACCESS
+  REPORT_EXPORTED
+  AUDIT_EXPORTED
+  /// An administrative purge of audit-log rows (settings-gated, password
+  /// confirmed). The prune function records this row itself, because the rows
+  /// being deleted are exactly the ones that would log it.
+  AUDIT_LOGS_DELETED
+}
+
+enum DigitalType {
+  PDF
+  EPUB
+  PREVIEW
+  LINK
+  AUDIO
+}
+
+enum AccessLevel {
+  MEMBER
+  LOAN_HOLDER
+  STAFF
+  PUBLIC
+}
+
+enum SettingsValueType {
+  string
+  number
+  boolean
+  json
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Identity & Access
+// ═══════════════════════════════════════════════════════════════════════════
+
+model Role {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// Stable code: ADMIN | LIBRARIAN | MEMBER. Never renamed in place.
+  code        String   @unique @db.VarChar(50)
+  name        String   @db.VarChar(100)
+  description String?  @db.Text
+  /// System roles cannot be deleted by the API.
+  isSystem    Boolean  @default(false)
+  /// Displayed hierarchy rank; used for UX ordering only, never for authorization.
+  rank        Int      @default(0)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  users       User[]
+  permissions RolePermission[]
+
+  @@map("roles")
+}
+
+/// Atomic capability registry. Codes are stable identifiers; a rename is a new
+/// row plus a deprecation, never an in-place edit.
+model Permission {
+  id          String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code        String @unique @db.VarChar(80)
+  resource    String @db.VarChar(50)
+  action      String @db.VarChar(50)
+  description String @db.Text
+
+  roles RolePermission[]
+
+  @@index([resource])
+  @@index([action])
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       String   @map("role_id") @db.Uuid
+  permissionId String   @map("permission_id") @db.Uuid
+  grantedBy    String?  @map("granted_by") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  role          Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission    Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  grantedByUser User?      @relation("RolePermissionsGrantedBy", fields: [grantedBy], references: [id], onDelete: SetNull)
+
+  @@id([roleId, permissionId])
+  @@index([permissionId])
+  @@index([grantedBy])
+  @@map("role_permissions")
+}
+
+/// Authenticating account. Distinct from Member: identity vs library participation.
+model User {
+  id                 String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email              String     @unique @db.VarChar(255)
+  phone              String?    @db.VarChar(32)
+  /// Argon2id PHC string. Never selected into any API response projection.
+  passwordHash       String     @map("password_hash") @db.VarChar(255)
+  firstName          String     @map("first_name") @db.VarChar(100)
+  lastName           String     @map("last_name") @db.VarChar(100)
+  status             UserStatus @default(ACTIVE)
+  roleId             String     @map("role_id") @db.Uuid
+  primaryBranchId    String?    @map("primary_branch_id") @db.Uuid
+  /// Tenant anchor (Gate 2). Every library-owned entity resolves to a library, and
+  /// this is how a *person* is attributed to one. Deliberately separate from
+  /// `primaryBranchId`: branch scope answers "which desks may I operate at", while
+  /// this answers "whose data may I ever see". Conflating them would mean a
+  /// librarian with no branch assignment silently had no library either, and would
+  /// make a multi-branch librarian's reach ambiguous.
+  ///
+  /// Nullable because the seed predates this column; it is backfilled from
+  /// `primaryBranchId → branches.library_id` and, failing that, the single seeded
+  /// library. An application-layer invariant (see scripts/invariant-checks.sql)
+  /// asserts every non-null role carries a library, because a user with none can
+  /// never pass a library-scope check.
+  libraryId          String?    @map("library_id") @db.Uuid
+  /// Staff identifier issued by the administering library. Unique per library
+  /// rather than globally: two libraries may both number their staff from 1, and
+  /// forcing global uniqueness would leak one library's headcount to another.
+  employeeId         String?    @map("employee_id") @db.VarChar(50)
+  profileImageUrl    String?    @map("profile_image_url") @db.Text
+  emailVerifiedAt    DateTime?  @map("email_verified_at")
+  mustChangePassword Boolean    @default(false) @map("must_change_password")
+  failedLoginCount   Int        @default(0) @map("failed_login_count")
+  lockedUntil        DateTime?  @map("locked_until")
+  lastLoginAt        DateTime?  @map("last_login_at")
+  lastLoginIp        String?    @map("last_login_ip") @db.VarChar(45)
+  passwordChangedAt  DateTime?  @map("password_changed_at")
+  createdAt          DateTime   @default(now()) @map("created_at")
+  updatedAt          DateTime   @updatedAt @map("updated_at")
+  /// Soft delete. Sessions/tokens cascade; circulation history is untouched.
+  deletedAt          DateTime?  @map("deleted_at")
+
+  role                Role     @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  primaryBranch       Branch?  @relation("UserPrimaryBranch", fields: [primaryBranchId], references: [id], onDelete: SetNull)
+  library             Library? @relation(fields: [libraryId], references: [id], onDelete: Restrict)
+  primaryLibraryAdmin Boolean  @default(false) @map("primary_library_admin")
+  /// The library this admin is the primary administrator of. Nullable and
+  /// separate from `libraryId` on purpose: `libraryId` is the tenant anchor that
+  /// every scope check reads, whereas this records a governance relationship. A
+  /// user has exactly one, so the uniqueness is real.
+  primaryLibraryId    String?  @unique @map("primary_library_id") @db.Uuid
+
+  /// Borrow requests filed *by* this user acting for themselves. The student side.
+  borrowRequestsMade     BorrowRequest[] @relation("BorrowRequestCreatedBy")
+  /// Requests this user filed for somebody else (staff filing at a member's request).
+  // NB: no "requests belonging to this member" relation here. It lives on Member,
+  // because ownership is expressed as `memberId = principal.memberId` — a
+  // User-side relation would duplicate that path and give Prisma two fields
+  // competing for the same named relation.
+  /// Requests this user approved or rejected.
+  borrowRequestsReviewed BorrowRequest[] @relation("BorrowRequestReviewedBy")
+  /// The library whose primary administrator this user is. See `primaryLibraryId`.
+  administeredLibrary    Library?        @relation("LibraryPrimaryAdmin", fields: [primaryLibraryId], references: [id], onDelete: SetNull)
+
+  memberProfile            Member?
+  branchAssignments        UserBranch[]
+  branchAssignmentsMade    UserBranch[]             @relation("UserBranchAssignedBy")
+  sessions                 Session[]
+  passwordResetTokens      PasswordResetToken[]
+  emailVerificationTokens  EmailVerificationToken[]
+  booksCreated             Book[]                   @relation("BookCreatedBy")
+  loansIssued              Loan[]                   @relation("LoanIssuedBy")
+  loansReturned            Loan[]                   @relation("LoanReturnedBy")
+  renewalsRecorded         LoanRenewal[]
+  finesCreated             Fine[]                   @relation("FineCreatedBy")
+  finesWaived              Fine[]                   @relation("FineWaivedBy")
+  paymentsReceived         FinePayment[]            @relation("PaymentReceivedBy")
+  paymentsVoided           FinePayment[]            @relation("PaymentVoidedBy")
+  notifications            Notification[]
+  auditLogs                AuditLog[]
+  settingsUpdated          Setting[]
+  digitalResourcesUploaded DigitalResource[]
+  rolePermissionsGranted   RolePermission[]         @relation("RolePermissionsGrantedBy")
+
+  @@index([roleId])
+  @@index([status])
+  @@index([lastName, firstName])
+  @@index([primaryBranchId])
+  @@index([deletedAt])
+  /// Supports the Gate 2 scope check, which runs on every authenticated request.
+  @@index([libraryId])
+  /// Partial-equivalent unique on (library_id, employee_id); Prisma cannot express
+  /// "unique where not null", so the SQL migration adds the real partial index and
+  /// this composite index backs lookups that omit the null case.
+  @@index([libraryId, employeeId])
+  @@map("users")
+}
+
+/// Staff ↔ branch scope. Enables multi-branch librarians and, later, branch admins.
+model UserBranch {
+  userId     String   @map("user_id") @db.Uuid
+  branchId   String   @map("branch_id") @db.Uuid
+  assignedBy String?  @map("assigned_by") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user           User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  branch         Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  assignedByUser User?  @relation("UserBranchAssignedBy", fields: [assignedBy], references: [id], onDelete: SetNull)
+
+  @@id([userId, branchId])
+  @@index([branchId])
+  @@index([assignedBy])
+  @@map("user_branches")
+}
+
+/// Server-side session registry. Source of truth for revocation — a JWT alone
+/// cannot be revoked, so every request is checked against this row.
+model Session {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId           String    @map("user_id") @db.Uuid
+  /// SHA-256 of an opaque 256-bit refresh token. The token itself is never stored.
+  refreshTokenHash String    @unique @map("refresh_token_hash") @db.Char(64)
+  /// Rotation lineage. Reuse of a rotated token revokes the whole family.
+  familyId         String    @map("family_id") @db.Uuid
+  ip               String?   @db.VarChar(45)
+  userAgent        String?   @map("user_agent") @db.Text
+  deviceLabel      String?   @map("device_label") @db.VarChar(120)
+  issuedAt         DateTime  @default(now()) @map("issued_at")
+  lastUsedAt       DateTime  @default(now()) @map("last_used_at")
+  expiresAt        DateTime  @map("expires_at")
+  revokedAt        DateTime? @map("revoked_at")
+  revokedReason    String?   @map("revoked_reason") @db.VarChar(120)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@index([familyId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash") @db.Char(64)
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("password_reset_tokens")
+}
+
+model EmailVerificationToken {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash") @db.Char(64)
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("email_verification_tokens")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Organisation — Library → Branch → Location → Shelf → Copy
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Top-level tenant anchor. V1 hosts one library; the row exists so a future
+/// multi-tenant `organization_id` scope can be added without reshaping queries.
+model Library {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code         String   @unique @db.VarChar(30)
+  name         String   @db.VarChar(150)
+  legalName    String?  @map("legal_name") @db.VarChar(200)
+  email        String?  @db.VarChar(255)
+  phone        String?  @db.VarChar(32)
+  address      String?  @db.Text
+  /// IANA timezone. Due dates and fines are calendar-day concepts.
+  timezone     String   @default("Africa/Nairobi") @db.VarChar(64)
+  /// Public/academic/specialist classification. Free text: the set of library
+  /// types is a local convention and an enum here would need a migration to add
+  /// one that some library in some country considers obvious.
+  type         String?  @db.VarChar(60)
+  description  String?  @db.Text
+  /// Data URL or object-storage key for the library mark. Never a raw path the
+  /// client supplies and then reads back, so it cannot be used for traversal.
+  logoUrl      String?  @map("logo_url") @db.Text
+  /// Weekly opening hours as a JSON object keyed by weekday (`"mon": "08:00-17:00"`).
+  /// JSON rather than seven columns: consumers need the whole week as one value,
+  /// and a partially-populated week is normal rather than an error.
+  openingHours Json?    @map("opening_hours")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  branches       Branch[]
+  users          User[]
+  /// Primary administrators of this library. See `User.primaryLibraryAdmin`.
+  admins         User[]          @relation("LibraryPrimaryAdmin")
+  borrowRequests BorrowRequest[]
+
+  @@index([isActive])
+  @@map("libraries")
+}
+
+model Branch {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  libraryId String    @map("library_id") @db.Uuid
+  code      String    @unique @db.VarChar(30)
+  name      String    @db.VarChar(150)
+  email     String?   @db.VarChar(255)
+  phone     String?   @db.VarChar(32)
+  address   String?   @db.Text
+  isActive  Boolean   @default(true) @map("is_active")
+  openedAt  DateTime? @map("opened_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  library        Library         @relation(fields: [libraryId], references: [id], onDelete: Restrict)
+  locations      Location[]
+  staff          UserBranch[]
+  users          User[]          @relation("UserPrimaryBranch")
+  members        Member[]
+  copies         BookCopy[]
+  loans          Loan[]
+  reservations   Reservation[]
+  payments       FinePayment[]
+  borrowRequests BorrowRequest[]
+
+  @@index([libraryId])
+  @@index([isActive])
+  @@map("branches")
+}
+
+model Location {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  branchId  String   @map("branch_id") @db.Uuid
+  code      String   @db.VarChar(30)
+  name      String   @db.VarChar(120)
+  floor     String?  @db.VarChar(50)
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  branch  Branch     @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  shelves Shelf[]
+  copies  BookCopy[]
+
+  @@unique([branchId, code])
+  @@index([branchId])
+  @@map("locations")
+}
+
+model Shelf {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  locationId String   @map("location_id") @db.Uuid
+  code       String   @db.VarChar(30)
+  /// Optional capacity, used to warn staff before over-filling a rack.
+  capacity   Int?
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  location Location   @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  copies   BookCopy[]
+
+  @@unique([locationId, code])
+  @@index([locationId])
+  @@map("shelves")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Membership
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// THE policy table. Every borrowing limit, duration, renewal cap, fine rate,
+/// grace period and hold duration is read from here — never hardcoded in a
+/// controller. Loans snapshot `memberTypeId` so history stays interpretable
+/// after a policy change.
+model MemberType {
+  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code                String   @unique @db.VarChar(30)
+  name                String   @db.VarChar(100)
+  maxActiveLoans      Int      @default(3) @map("max_active_loans")
+  loanDurationDays    Int      @default(14) @map("loan_duration_days")
+  maxRenewals         Int      @default(1) @map("max_renewals")
+  renewalDurationDays Int      @default(14) @map("renewal_duration_days")
+  gracePeriodDays     Int      @default(0) @map("grace_period_days")
+  finePerDay          Decimal  @default(50) @map("fine_per_day") @db.Decimal(14, 2)
+  /// NULL = uncapped.
+  maxFineCap          Decimal? @map("max_fine_cap") @db.Decimal(14, 2)
+  reservationLimit    Int      @default(3) @map("reservation_limit")
+  holdDurationDays    Int      @default(3) @map("hold_duration_days")
+  requiresApproval    Boolean  @default(false) @map("requires_approval")
+  isActive            Boolean  @default(true) @map("is_active")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  members Member[]
+  loans   Loan[]
+
+  @@index([isActive])
+  @@map("member_types")
+}
+
+model Member {
+  id               String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// Member-facing identifier and barcode payload.
+  membershipNumber String       @unique @map("membership_number") @db.VarChar(30)
+  userId           String       @unique @map("user_id") @db.Uuid
+  memberTypeId     String       @map("member_type_id") @db.Uuid
+  homeBranchId     String       @map("home_branch_id") @db.Uuid
+  status           MemberStatus @default(ACTIVE)
+  joinedAt         DateTime     @default(now()) @map("joined_at")
+  expiresAt        DateTime?    @map("expires_at")
+  dateOfBirth      DateTime?    @map("date_of_birth") @db.Date
+  gender           String?      @db.VarChar(20)
+  address          String?      @db.Text
+  city             String?      @db.VarChar(100)
+  occupation       String?      @db.VarChar(100)
+  notes            String?      @db.Text
+  createdAt        DateTime     @default(now()) @map("created_at")
+  updatedAt        DateTime     @updatedAt @map("updated_at")
+  deletedAt        DateTime?    @map("deleted_at")
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Restrict)
+  memberType MemberType @relation(fields: [memberTypeId], references: [id], onDelete: Restrict)
+  homeBranch Branch     @relation(fields: [homeBranchId], references: [id], onDelete: Restrict)
+
+  loans          Loan[]
+  reservations   Reservation[]
+  fines          Fine[]
+  digitalLoans   DigitalLoan[]
+  borrowRequests BorrowRequest[] @relation("BorrowRequestMember")
+
+  @@index([memberTypeId])
+  @@index([homeBranchId, status])
+  @@index([status])
+  @@index([deletedAt])
+  @@map("members")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Catalogue
+// ═══════════════════════════════════════════════════════════════════════════
+
+model Publisher {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String   @unique @db.VarChar(200)
+  imprint   String?  @db.VarChar(200)
+  country   String?  @db.VarChar(100)
+  website   String?  @db.VarChar(255)
+  email     String?  @db.VarChar(255)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  books Book[]
+
+  @@map("publishers")
+}
+
+model Author {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String   @db.VarChar(200)
+  /// Authority-file form: "Martin, Robert C." — enables correct catalogue sort.
+  sortName    String   @map("sort_name") @db.VarChar(200)
+  biography   String?  @db.Text
+  nationality String?  @db.VarChar(100)
+  birthYear   Int?     @map("birth_year")
+  deathYear   Int?     @map("death_year")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  books BookAuthor[]
+
+  @@index([sortName])
+  @@index([name])
+  @@map("authors")
+}
+
+/// Self-referencing hierarchy (Technology → Programming → …). RESTRICT so a
+/// category with children cannot be deleted out from under them.
+model Category {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  parentId    String?  @map("parent_id") @db.Uuid
+  name        String   @db.VarChar(150)
+  slug        String   @unique @db.VarChar(160)
+  description String?  @db.Text
+  position    Int      @default(0)
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  parent   Category?      @relation("CategoryTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children Category[]     @relation("CategoryTree")
+  books    BookCategory[]
+
+  @@index([parentId])
+  @@index([position])
+  @@map("categories")
+}
+
+model Tag {
+  id    String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name  String  @unique @db.VarChar(60)
+  label String? @db.VarChar(80)
+
+  books BookTag[]
+
+  @@map("tags")
+}
+
+/// The intellectual work. Never merged with BookCopy.
+model Book {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  isbn13          String?   @unique @db.VarChar(20)
+  isbn10          String?   @unique @db.VarChar(20)
+  title           String    @db.VarChar(400)
+  subtitle        String?   @db.VarChar(400)
+  description     String?   @db.Text
+  edition         String?   @db.VarChar(100)
+  language        String    @default("en") @db.VarChar(50)
+  publicationYear Int?      @map("publication_year")
+  publicationDate DateTime? @map("publication_date") @db.Date
+  pageCount       Int?      @map("page_count")
+  publisherId     String?   @map("publisher_id") @db.Uuid
+  coverImageUrl   String?   @map("cover_image_url") @db.VarChar(500)
+  /// Shelf-mark, e.g. "005.7 ROB".
+  callNumber      String?   @map("call_number") @db.VarChar(50)
+  /// LCSH-style subject headings. GIN indexed in migrations_sql for fast lookup.
+  subjects        String[]  @default([])
+  summary         String?   @db.Text
+  /// Reference-only titles (dictionaries, indexes) cannot be borrowed.
+  isReferenceOnly Boolean   @default(false) @map("is_reference_only")
+  archivedAt      DateTime? @map("archived_at")
+  archivedReason  String?   @map("archived_reason") @db.VarChar(255)
+  createdBy       String?   @map("created_by") @db.Uuid
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  deletedAt       DateTime? @map("deleted_at")
+
+  publisher        Publisher?        @relation(fields: [publisherId], references: [id], onDelete: Restrict)
+  createdByUser    User?             @relation("BookCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  authors          BookAuthor[]
+  categories       BookCategory[]
+  tags             BookTag[]
+  copies           BookCopy[]
+  loans            Loan[]
+  reservations     Reservation[]
+  digitalResources DigitalResource[]
+  borrowRequests   BorrowRequest[]
+
+  @@index([title])
+  @@index([publisherId])
+  @@index([publicationYear])
+  @@index([language])
+  @@index([archivedAt])
+  @@index([createdBy])
+  @@index([callNumber])
+  @@map("books")
+}
+
+model BookAuthor {
+  bookId   String @map("book_id") @db.Uuid
+  authorId String @map("author_id") @db.Uuid
+  /// Catalogued order (1 = primary author).
+  position Int    @default(0)
+  /// AUTHOR | EDITOR | TRANSLATOR | ILLUSTRATOR
+  role     String @default("AUTHOR") @db.VarChar(30)
+
+  book   Book   @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  author Author @relation(fields: [authorId], references: [id], onDelete: Restrict)
+
+  @@id([bookId, authorId])
+  @@index([authorId])
+  @@map("book_authors")
+}
+
+model BookCategory {
+  bookId     String  @map("book_id") @db.Uuid
+  categoryId String  @map("category_id") @db.Uuid
+  isPrimary  Boolean @default(false) @map("is_primary")
+
+  book     Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+
+  @@id([bookId, categoryId])
+  @@index([categoryId])
+  @@map("book_categories")
+}
+
+model BookTag {
+  bookId String @map("book_id") @db.Uuid
+  tagId  String @map("tag_id") @db.Uuid
+
+  book Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  tag  Tag  @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([bookId, tagId])
+  @@index([tagId])
+  @@map("book_tags")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Inventory
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// The physical item. `status` (circulation state) and `condition` (physical
+/// state) are deliberately orthogonal: a copy can be AVAILABLE + POOR.
+model BookCopy {
+  id                String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bookId            String        @map("book_id") @db.Uuid
+  branchId          String        @map("branch_id") @db.Uuid
+  locationId        String?       @map("location_id") @db.Uuid
+  shelfId           String?       @map("shelf_id") @db.Uuid
+  accessionNumber   String        @unique @map("accession_number") @db.VarChar(50)
+  barcode           String        @unique @db.VarChar(64)
+  /// Independent opaque value, so a QR payload is not derivable from a
+  /// sequential accession number.
+  qrToken           String        @unique @map("qr_token") @db.VarChar(64)
+  condition         CopyCondition @default(GOOD)
+  status            CopyStatus    @default(AVAILABLE)
+  acquisitionDate   DateTime?     @map("acquisition_date") @db.Date
+  /// PURCHASE | DONATION | TRANSFER | REFUND | LOST_REPLACEMENT
+  acquisitionSource String?       @map("acquisition_source") @db.VarChar(50)
+  purchasePrice     Decimal?      @map("purchase_price") @db.Decimal(14, 2)
+  replacementCost   Decimal?      @map("replacement_cost") @db.Decimal(14, 2)
+  notes             String?       @db.Text
+  removedAt         DateTime?     @map("removed_at")
+  removedReason     String?       @map("removed_reason") @db.VarChar(255)
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
+
+  book     Book      @relation(fields: [bookId], references: [id], onDelete: Restrict)
+  branch   Branch    @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  location Location? @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  shelf    Shelf?    @relation(fields: [shelfId], references: [id], onDelete: Restrict)
+
+  loans               Loan[]
+  auditTrail          CopyStatusHistory[]
+  /// Requests this copy has been held for at approval, before issuance.
+  reservedForRequests BorrowRequest[]
+
+  @@index([bookId, status])
+  @@index([branchId, status])
+  @@index([locationId])
+  @@index([shelfId])
+  @@index([status])
+  @@index([removedAt])
+  @@map("book_copies")
+}
+
+/// Append-only status/condition transition trail for a physical copy.
+/// Answers "when was COPY-001 reported lost, and by whom?" without
+/// overwriting anything in book_copies.
+model CopyStatusHistory {
+  id            BigInt         @id @default(autoincrement())
+  copyId        String         @map("copy_id") @db.Uuid
+  fromStatus    CopyStatus?    @map("from_status")
+  toStatus      CopyStatus     @map("to_status")
+  fromCondition CopyCondition? @map("from_condition")
+  toCondition   CopyCondition? @map("to_condition")
+  reason        String?        @db.VarChar(255)
+  changedBy     String?        @map("changed_by") @db.Uuid
+  changedAt     DateTime       @default(now()) @map("changed_at")
+  requestId     String?        @map("request_id") @db.VarChar(64)
+
+  copy BookCopy @relation(fields: [copyId], references: [id], onDelete: Restrict)
+
+  @@index([copyId, changedAt])
+  @@map("copy_status_history")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Circulation
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Never deleted. Carries a memberTypeId policy snapshot, denormalised bookId
+/// (turns "most borrowed" into an index scan), and staff attribution.
+model Loan {
+  id            String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  copyId        String     @map("copy_id") @db.Uuid
+  /// Denormalised from copy → book. Intentional: reporting scans (book_id, loaned_at).
+  bookId        String     @map("book_id") @db.Uuid
+  memberId      String     @map("member_id") @db.Uuid
+  /// Issuing branch. Immutable after creation.
+  branchId      String     @map("branch_id") @db.Uuid
+  issuedBy      String     @map("issued_by") @db.Uuid
+  /// Policy snapshot at issue time so later policy edits cannot rewrite history.
+  memberTypeId  String     @map("member_type_id") @db.Uuid
+  loanedAt      DateTime   @default(now()) @map("loaned_at")
+  dueDate       DateTime   @map("due_date")
+  /// due_date + memberType.grace_period_days. Fine starts here, not at due_date.
+  graceUntil    DateTime?  @map("grace_until")
+  returnedAt    DateTime?  @map("returned_at")
+  returnedBy    String?    @map("returned_by") @db.Uuid
+  status        LoanStatus @default(ACTIVE)
+  renewalCount  Int        @default(0) @map("renewal_count")
+  lastRenewedAt DateTime?  @map("last_renewed_at")
+  lostAt        DateTime?  @map("lost_at")
+  damagedAt     DateTime?  @map("damaged_at")
+  notes         String?    @db.Text
+  createdAt     DateTime   @default(now()) @map("created_at")
+  updatedAt     DateTime   @updatedAt @map("updated_at")
+
+  copy           BookCopy   @relation(fields: [copyId], references: [id], onDelete: Restrict)
+  book           Book       @relation(fields: [bookId], references: [id], onDelete: Restrict)
+  member         Member     @relation(fields: [memberId], references: [id], onDelete: Restrict)
+  branch         Branch     @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  issuedByUser   User       @relation("LoanIssuedBy", fields: [issuedBy], references: [id], onDelete: Restrict)
+  returnedByUser User?      @relation("LoanReturnedBy", fields: [returnedBy], references: [id], onDelete: SetNull)
+  memberType     MemberType @relation(fields: [memberTypeId], references: [id], onDelete: Restrict)
+
+  renewals              LoanRenewal[]
+  /// One-to-many: a loan can accumulate several fines over its lifetime
+  /// (one automatic overdue fine plus any number of manual damage/other fines).
+  fines                 Fine[]
+  reservationsFulfilled Reservation[]
+  statusHistory         LoanStatusHistory[]
+  /// The borrow request this loan satisfies, if it came from one. Set only at
+  /// issuance — an approved request has no loan yet.
+  borrowRequest         BorrowRequest?
+
+  @@index([copyId, status])
+  @@index([memberId, status])
+  @@index([status, dueDate])
+  @@index([branchId, status])
+  @@index([bookId, loanedAt])
+  @@index([issuedBy])
+  @@index([memberId, loanedAt])
+  @@map("loans")
+}
+
+model LoanStatusHistory {
+  id         BigInt      @id @default(autoincrement())
+  loanId     String      @map("loan_id") @db.Uuid
+  fromStatus LoanStatus? @map("from_status")
+  toStatus   LoanStatus  @map("to_status")
+  reason     String?     @db.VarChar(255)
+  changedBy  String?     @map("changed_by") @db.Uuid
+  changedAt  DateTime    @default(now()) @map("changed_at")
+  requestId  String?     @map("request_id") @db.VarChar(64)
+
+  loan Loan @relation(fields: [loanId], references: [id], onDelete: Restrict)
+
+  @@index([loanId, changedAt])
+  @@map("loan_status_history")
+}
+
+/// Append-only renewal ledger. (loanId, renewalNumber) uniqueness makes the
+/// renewal count race-proof even if two requests race on the loan row.
+model LoanRenewal {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  loanId          String   @map("loan_id") @db.Uuid
+  renewedBy       String   @map("renewed_by") @db.Uuid
+  renewedAt       DateTime @default(now()) @map("renewed_at")
+  previousDueDate DateTime @map("previous_due_date")
+  newDueDate      DateTime @map("new_due_date")
+  renewalNumber   Int      @map("renewal_number")
+  previousStatus  String   @map("previous_status") @db.VarChar(30)
+  reason          String?  @db.VarChar(255)
+
+  loan          Loan @relation(fields: [loanId], references: [id], onDelete: Restrict)
+  renewedByUser User @relation(fields: [renewedBy], references: [id], onDelete: Restrict)
+
+  @@unique([loanId, renewalNumber])
+  @@index([loanId])
+  @@index([renewedBy])
+  @@map("loan_renewals")
+}
+
+/// Waiting list. Targets the TITLE, not a specific copy — the copy is only
+/// assigned when the hold becomes READY, because the "expected" copy may be
+/// lost, transferred, or already on loan.
+model Reservation {
+  id              String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bookId          String            @map("book_id") @db.Uuid
+  memberId        String            @map("member_id") @db.Uuid
+  branchId        String?           @map("branch_id") @db.Uuid
+  /// FIFO queue position among ACTIVE holds for this book.
+  position        Int
+  status          ReservationStatus @default(ACTIVE)
+  reservedAt      DateTime          @default(now()) @map("reserved_at")
+  notifiedAt      DateTime?         @map("notified_at")
+  readyAt         DateTime?         @map("ready_at")
+  holdExpiresAt   DateTime?         @map("hold_expires_at")
+  fulfilledAt     DateTime?         @map("fulfilled_at")
+  fulfilledLoanId String?           @map("fulfilled_loan_id") @db.Uuid
+  cancelledAt     DateTime?         @map("cancelled_at")
+  cancelReason    String?           @map("cancel_reason") @db.VarChar(255)
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+
+  book          Book    @relation(fields: [bookId], references: [id], onDelete: Restrict)
+  member        Member  @relation(fields: [memberId], references: [id], onDelete: Restrict)
+  branch        Branch? @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  fulfilledLoan Loan?   @relation(fields: [fulfilledLoanId], references: [id], onDelete: SetNull)
+
+  @@index([bookId, status, position])
+  @@index([memberId, status])
+  @@index([status, holdExpiresAt])
+  @@index([branchId, status])
+  @@index([fulfilledLoanId])
+  @@map("reservations")
+}
+
+/// A student's request to borrow a title, pending staff review.
+///
+/// Distinct from `Reservation` (a waiting list for an already-sought title) and
+/// from `Loan` (an issued item). This is the *intention* record that exists
+/// precisely so a student cannot create a loan directly: the student ends a
+/// request, staff end a loan, and the two are joined only by `issuedLoanId`.
+///
+/// The three-phase approval (approve → assign copy → confirm issue) is why
+/// `reservedCopyId` and `issuedLoanId` are separate nullable columns rather
+/// than one `copyId`: "a librarian picked a copy" and "the book left the
+/// building" are different facts, and collapsing them would let an approved
+/// request masquerade as an issued loan.
+model BorrowRequest {
+  id             String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// The library that owns this request, copied from the member's home branch.
+  /// Set server-side: accepting a client value would let a student file against a
+  /// library whose staff could see it and whose isolation rules it bypasses.
+  libraryId      String              @map("library_id") @db.Uuid
+  memberId       String              @map("member_id") @db.Uuid
+  bookId         String              @map("book_id") @db.Uuid
+  status         BorrowRequestStatus @default(PENDING)
+  /// The physical copy chosen at approval, before issuance.
+  reservedCopyId String?             @map("reserved_copy_id") @db.Uuid
+  /// Populated only once a Loan exists.
+  ///
+  /// `@unique` is not decoration: it makes "one loan satisfies at most one request"
+  /// a database invariant rather than a convention, so a double-issuance bug
+  /// fails loudly at the index instead of silently pointing two requests at the
+  /// same loan.
+  issuedLoanId   String?             @unique @map("issued_loan_id") @db.Uuid
+  decidedBy      String?             @map("decided_by") @db.Uuid
+  decidedAt      DateTime?           @map("decided_at")
+  /// Required in practice for REJECTED: a bare "no" gives the student nothing to
+  /// act on, and staff who cannot see why a decision was made cannot defend it.
+  decisionReason String?             @map("decision_reason") @db.VarChar(500)
+  /// Branch the copy was chosen from, so issuance defaults to the same desk.
+  branchId       String?             @map("branch_id") @db.Uuid
+  /// A pending request lapses if not actioned, rather than sitting in the
+  /// librarian's queue forever.
+  expiresAt      DateTime?           @map("expires_at")
+  notes          String?             @db.VarChar(2000)
+  /// Who filed it. Normally the member, but staff may file on their behalf at a
+  /// member's request — which is why this is an actor id and not a derived one.
+  createdBy      String              @map("created_by") @db.Uuid
+  createdAt      DateTime            @default(now()) @map("created_at")
+  updatedAt      DateTime            @updatedAt @map("updated_at")
+
+  library       Library   @relation(fields: [libraryId], references: [id], onDelete: Restrict)
+  member        Member    @relation("BorrowRequestMember", fields: [memberId], references: [id], onDelete: Restrict)
+  book          Book      @relation(fields: [bookId], references: [id], onDelete: Restrict)
+  reservedCopy  BookCopy? @relation(fields: [reservedCopyId], references: [id], onDelete: Restrict)
+  issuedLoan    Loan?     @relation(fields: [issuedLoanId], references: [id], onDelete: SetNull)
+  branch        Branch?   @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  createdByUser User      @relation("BorrowRequestCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
+  decidedByUser User?     @relation("BorrowRequestReviewedBy", fields: [decidedBy], references: [id], onDelete: Restrict)
+
+  /// Blocks a second pending request for the same title by the same member.
+  /// Partial-index territory (Prisma cannot express "unique where status =
+  /// PENDING"), so the real constraint is created in the SQL migration; this
+  /// composite index backs the lookup that enforces it.
+  @@index([memberId, bookId, status])
+  /// The librarian's queue: pending requests for a library, newest first.
+  @@index([libraryId, status, createdAt])
+  @@index([status, expiresAt])
+  @@index([reservedCopyId])
+  /// Deliberately no `@@index([issuedLoanId])`: the `@unique` above already
+  /// creates a unique index on that column, so a second non-unique index would be
+  /// redundant write overhead for no additional lookup path.
+  @@map("borrow_requests")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Finance — Decimal only, never float. Nothing here is deleted.
+// ═══════════════════════════════════════════════════════════════════════════
+
+model Fine {
+  id           String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// Human-facing reference, e.g. FNE-2026-000123.
+  reference    String     @unique @db.VarChar(40)
+  memberId     String     @map("member_id") @db.Uuid
+  /// Indexed, but NOT unique. A loan may carry many manual DAMAGE/OTHER fines
+  /// across its lifetime, so uniqueness is a PARTIAL index over the automatically
+  /// assessed types only (see migration 20260101000100_invariants, B4). A global
+  /// @unique here would silently forbid a second damage fine on the same loan.
+  loanId       String?    @map("loan_id") @db.Uuid
+  type         FineType   @default(OVERDUE)
+  amount       Decimal    @db.Decimal(14, 2)
+  waivedAmount Decimal    @default(0) @map("waived_amount") @db.Decimal(14, 2)
+  status       FineStatus @default(OUTSTANDING)
+  description  String     @db.VarChar(500)
+  daysOverdue  Int        @default(0) @map("days_overdue")
+  assessedAt   DateTime   @default(now()) @map("assessed_at")
+  dueDate      DateTime?  @map("due_date")
+  waivedAt     DateTime?  @map("waived_at")
+  waivedBy     String?    @map("waived_by") @db.Uuid
+  waiverReason String?    @map("waiver_reason") @db.VarChar(500)
+  createdBy    String?    @map("created_by") @db.Uuid
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+
+  member        Member        @relation(fields: [memberId], references: [id], onDelete: Restrict)
+  loan          Loan?         @relation(fields: [loanId], references: [id], onDelete: Restrict)
+  waivedByUser  User?         @relation("FineWaivedBy", fields: [waivedBy], references: [id], onDelete: SetNull)
+  createdByUser User?         @relation("FineCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  payments      FinePayment[]
+
+  @@index([memberId, status])
+  @@index([status, assessedAt])
+  @@index([type])
+  /// Declared here so it agrees with the migration engine's view of the schema;
+  /// a Loan may now carry several fines, and this is the FK-side lookup index.
+  @@index([loanId])
+  @@map("fines")
+}
+
+/// Append-only receipts. Voids are recorded as new columns, never as deletes,
+/// so the money trail stays reconstructable.
+model FinePayment {
+  id            String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  fineId        String        @map("fine_id") @db.Uuid
+  receiptNumber String        @unique @map("receipt_number") @db.VarChar(40)
+  amount        Decimal       @db.Decimal(14, 2)
+  method        PaymentMethod
+  /// M-PESA confirmation code / bank reference / transaction id.
+  reference     String?       @db.VarChar(120)
+  paidAt        DateTime      @default(now()) @map("paid_at")
+  receivedBy    String        @map("received_by") @db.Uuid
+  branchId      String?       @map("branch_id") @db.Uuid
+  notes         String?       @db.VarChar(255)
+  voidedAt      DateTime?     @map("voided_at")
+  voidedBy      String?       @map("voided_by") @db.Uuid
+  voidReason    String?       @map("void_reason") @db.VarChar(255)
+  createdAt     DateTime      @default(now()) @map("created_at")
+
+  fine           Fine    @relation(fields: [fineId], references: [id], onDelete: Restrict)
+  receivedByUser User    @relation("PaymentReceivedBy", fields: [receivedBy], references: [id], onDelete: Restrict)
+  voidedByUser   User?   @relation("PaymentVoidedBy", fields: [voidedBy], references: [id], onDelete: SetNull)
+  branch         Branch? @relation(fields: [branchId], references: [id], onDelete: Restrict)
+
+  @@index([fineId, paidAt])
+  @@index([paidAt])
+  @@index([receivedBy])
+  @@index([method])
+  @@map("fine_payments")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Platform
+// ═══════════════════════════════════════════════════════════════════════════
+
+model Notification {
+  id        String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String           @map("user_id") @db.Uuid
+  type      NotificationType
+  title     String           @db.VarChar(200)
+  message   String           @db.VarChar(1000)
+  /// Deep-link payload, e.g. { loanId, dueDate }. Never secrets.
+  data      Json             @default("{}")
+  /// IN_APP now; EMAIL / SMS / PUSH added as providers, not schema changes.
+  channel   String           @default("IN_APP") @db.VarChar(30)
+  actionUrl String?          @map("action_url") @db.VarChar(300)
+  readAt    DateTime?        @map("read_at")
+  createdAt DateTime         @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt, createdAt])
+  @@index([type, createdAt])
+  @@map("notifications")
+}
+
+/// Append-only. No updated_at by design; immutability is enforced by a database
+/// trigger (see migrations_sql). Actor fields are snapshotted so history
+/// survives account deletion.
+model AuditLog {
+  id          BigInt      @id @default(autoincrement())
+  actorId     String?     @map("actor_id") @db.Uuid
+  actorEmail  String      @map("actor_email") @db.VarChar(255)
+  actorRole   String?     @map("actor_role") @db.VarChar(50)
+  action      AuditAction
+  entityType  String      @map("entity_type") @db.VarChar(50)
+  entityId    String?     @map("entity_id") @db.VarChar(60)
+  description String      @db.VarChar(1000)
+  before      Json?
+  after       Json?
+  ip          String?     @db.VarChar(45)
+  userAgent   String?     @map("user_agent") @db.Text
+  requestId   String?     @map("request_id") @db.VarChar(64)
+  createdAt   DateTime    @default(now()) @map("created_at")
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([actorId, createdAt])
+  @@index([entityType, entityId])
+  @@index([action, createdAt])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+/// Typed runtime configuration. Reading a policy here is preferable to
+/// hardcoding it, so business rules can be tuned without a deployment.
+model Setting {
+  id          String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  key         String            @unique @db.VarChar(100)
+  value       Json
+  valueType   SettingsValueType @default(string) @map("value_type")
+  category    String            @default("general") @db.VarChar(50)
+  description String?           @db.VarChar(255)
+  /// True only for the small set safe to serve before authentication.
+  isPublic    Boolean           @default(false) @map("is_public")
+  updatedBy   String?           @map("updated_by") @db.Uuid
+  createdAt   DateTime          @default(now()) @map("created_at")
+  updatedAt   DateTime          @updatedAt @map("updated_at")
+
+  updatedByUser User? @relation(fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@index([category])
+  @@map("settings")
+}
+
+/// Private object storage. Only the storage key is persisted — never a public URL.
+model DigitalResource {
+  id          String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bookId      String      @map("book_id") @db.Uuid
+  type        DigitalType @default(PDF)
+  title       String      @db.VarChar(200)
+  storageKey  String      @map("storage_key") @db.VarChar(500)
+  mimeType    String?     @map("mime_type") @db.VarChar(120)
+  sizeBytes   BigInt?     @map("size_bytes")
+  accessLevel AccessLevel @default(MEMBER) @map("access_level")
+  isActive    Boolean     @default(true) @map("is_active")
+  uploadedBy  String?     @map("uploaded_by") @db.Uuid
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+
+  book     Book          @relation(fields: [bookId], references: [id], onDelete: Restrict)
+  uploader User?         @relation(fields: [uploadedBy], references: [id], onDelete: SetNull)
+  loans    DigitalLoan[]
+
+  @@index([bookId, isActive])
+  @@index([accessLevel])
+  @@map("digital_resources")
+}
+
+model DigitalLoan {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  resourceId String    @map("resource_id") @db.Uuid
+  memberId   String    @map("member_id") @db.Uuid
+  issuedAt   DateTime  @default(now()) @map("issued_at")
+  expiresAt  DateTime? @map("expires_at")
+  returnedAt DateTime? @map("returned_at")
+  status     String    @default("ACTIVE") @db.VarChar(30)
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  resource DigitalResource @relation(fields: [resourceId], references: [id], onDelete: Restrict)
+  member   Member          @relation(fields: [memberId], references: [id], onDelete: Restrict)
+
+  @@index([memberId, status])
+  @@index([resourceId, status])
+  @@map("digital_loans")
+}
+
+/// Offline operation queue (V2 offline circulation). Written by the client with
+/// a client-generated UUID so a replayed operation collapses onto the same row.
+model SyncOperation {
+  id              String    @id @db.Uuid
+  userId          String    @map("user_id") @db.Uuid
+  deviceId        String    @map("device_id") @db.VarChar(100)
+  /// BORROW | RETURN | RENEW | RESERVE
+  operationType   String    @map("operation_type") @db.VarChar(30)
+  payload         Json
+  clientTimestamp DateTime  @map("client_timestamp")
+  /// Optimistic-concurrency token from the copy record at queue time.
+  baseVersion     String?   @map("base_version") @db.VarChar(60)
+  /// PENDING | SYNCING | SUCCESS | FAILED | CONFLICT
+  syncStatus      String    @default("PENDING") @map("sync_status") @db.VarChar(20)
+  resultId        String?   @map("result_id") @db.VarChar(60)
+  failureCode     String?   @map("failure_code") @db.VarChar(50)
+  failureReason   String?   @map("failure_reason") @db.VarChar(500)
+  syncedAt        DateTime? @map("synced_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  @@index([userId, syncStatus])
+  @@index([deviceId])
+  @@index([syncStatus, createdAt])
+  @@map("sync_operations")
+}

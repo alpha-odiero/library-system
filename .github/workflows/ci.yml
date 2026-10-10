@@ -1,0 +1,148 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A newer push to the same branch makes the in-flight run irrelevant.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+# The dependency advisories this repository knowingly accepts live in
+# `security/accepted-advisories.json`, asserted by `scripts/check-audit.mjs`.
+# The rationale is written out in docs/security/security-architecture.md.
+#
+# `npm audit` has no inline exception mechanism, and its only suggestion for
+# these is a Prisma *downgrade*. Rather than lower the severity threshold — which
+# would stop catching a genuinely dangerous high in `argon2` or `express` — the
+# audit step asserts the invariant we actually hold: nothing critical, and the
+# high-severity set is exactly the accepted list. Removing an entry fails the
+# build, so acceptance must be re-decided rather than inherited.
+
+jobs:
+  verify:
+    name: Lint, types, tests, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      # `npm ci` is used rather than `install` so CI fails on an out-of-sync
+      # lockfile instead of silently resolving different versions than local.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Formatting
+        run: npm run format:check
+
+      - name: Prisma schema
+        run: npm run db:validate
+
+      - name: OpenAPI document is current
+        run: npm run openapi:check
+
+      - name: Build
+        run: npm run build
+        env:
+          # `prisma generate` runs inside the build and needs a syntactically
+          # valid URL, but never connects. No live database is required here.
+          DATABASE_URL: postgresql://lms:password@localhost:5432/lms?schema=public
+          DIRECT_URL: postgresql://lms:password@localhost:5432/lms?schema=public
+
+  database:
+    name: Migrations apply and invariants hold
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    # Separate from `verify` because it needs a real PostgreSQL. It is the only
+    # job that can prove the migration SQL is valid, and the only one that can
+    # prove the partial unique indexes actually reject a double-borrow.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: lms
+          POSTGRES_PASSWORD: lms_ci_password
+          POSTGRES_DB: lms
+          POSTGRES_INITDB_ARGS: --encoding=UTF8 --locale=C
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U lms -d lms"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      - name: Deploy migrations and verify invariants
+        run: npm run db:deploy --workspace @lms/backend
+        env:
+          DATABASE_URL: postgresql://lms:lms_ci_password@localhost:5432/lms?schema=public
+          DIRECT_URL: postgresql://lms:lms_ci_password@localhost:5432/lms?schema=public
+
+      - name: Seed is idempotent
+        run: |
+          npm run db:seed --workspace @lms/backend
+          # A second run must change nothing, or a restart would create
+          # duplicate roles and permissions.
+          npm run db:seed --workspace @lms/backend
+
+      - name: Migrations and schema agree
+        run: npm run db:drift
+        env:
+          DATABASE_URL: postgresql://lms:lms_ci_password@localhost:5432/lms?schema=public
+          DIRECT_URL: postgresql://lms:lms_ci_password@localhost:5432/lms?schema=public
+
+      - name: Database integration tests
+        run: npm run test --workspace @lms/backend
+        env:
+          NODE_ENV: test
+          DATABASE_URL: postgresql://lms:lms_ci_password@localhost:5432/lms_test?schema=public
+          DIRECT_URL: postgresql://lms:lms_ci_password@localhost:5432/lms_test?schema=public
+
+  security:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      # Asserts the accepted set above rather than a blanket severity, so a new
+      # high-severity advisory fails even while the known ones do not.
+      - name: Audit
+        run: node scripts/check-audit.mjs

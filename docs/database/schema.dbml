@@ -1,0 +1,813 @@
+// ═══════════════════════════════════════════════════════════════════════════
+// LIBRARY MANAGEMENT SYSTEM — DBML (dbdiagram.io compatible)
+//
+// Source of truth: apps/backend/prisma/schema.prisma
+// Invariants Prisma cannot express (partial unique indexes, CHECK constraints,
+// append-only triggers, trigram/full-text GIN indexes) live in
+// apps/backend/prisma/migrations/20260101000100_invariants/migration.sql and
+// are called out per-table in `docs/database/constraints-and-indexes.md`.
+//
+// Conventions used here:
+//   pk  primary key          uk  unique        fk  foreign key
+//   ""  nullable             <>  many-to-many
+//
+// Deletion behaviour is stated on every FK because it is a design decision,
+// not a default: CASCADE only for ephemeral child rows, RESTRICT for every
+// financial / circulation / audit relationship.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Enums
+// ─────────────────────────────────────────────────────────────────────────────
+
+Enum user_status {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  LOCKED
+}
+
+Enum member_status {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  EXPIRED
+  PENDING
+}
+
+Enum copy_status {
+  AVAILABLE
+  BORROWED
+  RESERVED
+  LOST
+  DAMAGED
+  MAINTENANCE
+  REMOVED
+}
+
+Enum copy_condition {
+  NEW
+  LIKE_NEW
+  GOOD
+  FAIR
+  POOR
+  DAMAGED
+}
+
+Enum loan_status {
+  ACTIVE
+  RETURNED
+  OVERDUE
+  LOST
+  DAMAGED
+}
+
+Enum reservation_status {
+  ACTIVE
+  READY
+  FULFILLED
+  CANCELLED
+  EXPIRED
+}
+
+Enum fine_type {
+  OVERDUE
+  LOST
+  DAMAGE
+  LATE_RETURN
+  OTHER
+}
+
+Enum fine_status {
+  OUTSTANDING
+  PARTIAL
+  PAID
+  WAIVED
+  VOID
+}
+
+Enum payment_method {
+  CASH
+  MPESA
+  BANK
+  CARD
+  OTHER
+}
+
+Enum notification_type {
+  BOOK_DUE_SOON
+  BOOK_OVERDUE
+  RESERVATION_READY
+  FINE_CREATED
+  FINE_PAYMENT
+  BOOK_RETURNED
+  GENERAL
+  SYSTEM
+}
+
+Enum audit_action {
+  LOGIN
+  LOGIN_FAILED
+  LOGOUT
+  LOGOUT_ALL
+  PASSWORD_CHANGED
+  PASSWORD_RESET
+  EMAIL_VERIFIED
+  BOOK_CREATED
+  BOOK_UPDATED
+  BOOK_ARCHIVED
+  AUTHOR_CREATED
+  AUTHOR_UPDATED
+  CATEGORY_CREATED
+  CATEGORY_UPDATED
+  PUBLISHER_CREATED
+  PUBLISHER_UPDATED
+  COPY_CREATED
+  COPY_UPDATED
+  COPY_MOVED
+  COPY_REMOVED
+  MEMBER_CREATED
+  MEMBER_UPDATED
+  MEMBER_DELETED
+  MEMBER_TYPE_CREATED
+  MEMBER_TYPE_UPDATED
+  LOAN_CREATED
+  BOOK_RETURNED
+  BOOK_RENEWED
+  LOAN_MARKED_LOST
+  LOAN_MARKED_DAMAGED
+  RESERVATION_CREATED
+  RESERVATION_CANCELLED
+  RESERVATION_READY
+  RESERVATION_EXPIRED
+  RESERVATION_FULFILLED
+  FINE_CREATED
+  FINE_UPDATED
+  FINE_PAID
+  FINE_WAIVED
+  PAYMENT_VOIDED
+  USER_CREATED
+  USER_UPDATED
+  USER_DEACTIVATED
+  ROLE_CHANGED
+  PERMISSION_CHANGED
+  SETTINGS_UPDATED
+  BRANCH_CREATED
+  BRANCH_UPDATED
+  LIBRARY_CREATED
+  DIGITAL_RESOURCE_CREATED
+  DIGITAL_RESOURCE_DELETED
+  DIGITAL_ACCESS
+  REPORT_EXPORTED
+  AUDIT_EXPORTED
+}
+
+Enum digital_type {
+  PDF
+  EPUB
+  PREVIEW
+  LINK
+  AUDIO
+}
+
+Enum access_level {
+  MEMBER
+  LOAN_HOLDER
+  STAFF
+  PUBLIC
+}
+
+Enum settings_value_type {
+  string
+  number
+  boolean
+  json
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Identity & access
+// ─────────────────────────────────────────────────────────────────────────────
+
+Table roles {
+  id uuid [pk, default: `gen_random_uuid()`]
+  code varchar(50) [unique, note: 'Stable: ADMIN | LIBRARIAN | MEMBER. Never renamed in place.']
+  name varchar(100)
+  description text
+  is_system boolean [default: false, note: 'System roles cannot be deleted by the API.']
+  rank integer [default: 0, note: 'UX ordering only. Never used for authorization.']
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz
+  Note: 'Authorization is driven by role_permissions, not by role code. Adding a role is data, not a migration.'
+}
+
+Table permissions {
+  id uuid [pk, default: `gen_random_uuid()`]
+  code varchar(80) [unique, note: 'e.g. BOOK_VIEW. Stable identifier; a rename is a new row plus deprecation.']
+  resource varchar(50)
+  action varchar(50)
+  description text
+  Note: 'Resource-scoped only. Which ROWS a permission reaches is decided separately by branch scope and ownership.'
+}
+
+Table role_permissions {
+  role_id uuid [pk, fk]
+  permission_id uuid [pk, fk]
+  granted_by uuid [fk, null]
+  created_at timestamptz [default: `now()`]
+  Note: 'Composite PK makes a duplicate grant impossible. Deletion of role/permission cascades; the grantor reference is set null.'
+}
+
+Table users {
+  id uuid [pk, default: `gen_random_uuid()`]
+  email varchar(255) [unique]
+  phone varchar(32)
+  password_hash varchar(255) [note: 'Argon2id PHC string. Never selected into any API projection.']
+  first_name varchar(100)
+  last_name varchar(100)
+  status user_status [default: ACTIVE]
+  role_id uuid [fk]
+  primary_branch_id uuid [fk, null]
+  email_verified_at timestamptz
+  must_change_password boolean [default: false]
+  failed_login_count integer [default: 0]
+  locked_until timestamptz
+  last_login_at timestamptz
+  last_login_ip varchar(45)
+  password_changed_at timestamptz
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz
+  deleted_at timestamptz [note: 'Soft delete. Sessions cascade; circulation history is untouched.']
+}
+
+Table user_branches {
+  user_id uuid [pk, fk]
+  branch_id uuid [pk, fk]
+  assigned_by uuid [fk, null]
+  created_at timestamptz [default: `now()`]
+  Note: 'Staff branch scope. A librarian with rows here is confined to those branches unless granted BRANCH_MANAGE_ALL.'
+}
+
+Table sessions {
+  id uuid [pk, default: `gen_random_uuid()`]
+  user_id uuid [fk]
+  refresh_token_hash char(64) [unique, note: 'SHA-256 of an opaque 256-bit token. The token itself is never stored.']
+  family_id uuid [note: 'Rotation lineage. Reuse of a rotated token revokes the whole family.']
+  ip varchar(45)
+  user_agent text
+  device_label varchar(120)
+  issued_at timestamptz [default: `now()`]
+  last_used_at timestamptz [default: `now()`]
+  expires_at timestamptz
+  revoked_at timestamptz
+  revoked_reason varchar(120)
+  Note: 'Source of truth for revocation — a JWT alone cannot be revoked, so every request is checked against this row.'
+}
+
+Table password_reset_tokens {
+  id uuid [pk, default: `gen_random_uuid()`]
+  user_id uuid [fk]
+  token_hash char(64) [unique]
+  expires_at timestamptz
+  used_at timestamptz
+  created_at timestamptz [default: `now()`]
+}
+
+Table email_verification_tokens {
+  id uuid [pk, default: `gen_random_uuid()`]
+  user_id uuid [fk]
+  token_hash char(64) [unique]
+  expires_at timestamptz
+  used_at timestamptz
+  created_at timestamptz [default: `now()`]
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Organisation — Library → Branch → Location → Shelf → Copy
+// ─────────────────────────────────────────────────────────────────────────────
+
+Table libraries {
+  id uuid [pk, default: `gen_random_uuid()`]
+  code varchar(30) [unique]
+  name varchar(150)
+  legal_name varchar(200)
+  email varchar(255)
+  phone varchar(32)
+  address text
+  timezone varchar(64) [default: 'Africa/Nairobi', note: 'IANA zone. Due dates and fines are calendar-day concepts.']
+  is_active boolean [default: true]
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz
+  Note: 'Top-level tenant anchor. V1 hosts one library; the row exists so a future organization_id scope can be added without reshaping queries.'
+}
+
+Table branches {
+  id uuid [pk, default: `gen_random_uuid()`]
+  library_id uuid [fk]
+  code varchar(30) [unique]
+  name varchar(150)
+  email varchar(255)
+  phone varchar(32)
+  address text
+  is_active boolean [default: true]
+  opened_at timestamptz
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz
+}
+
+Table locations {
+  id uuid [pk, default: `gen_random_uuid()`]
+  branch_id uuid [fk]
+  code varchar(30)
+  name varchar(120)
+  floor varchar(50)
+  is_active boolean [default: true]
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz
+  Note: 'Unique (branch_id, code).'
+}
+
+Table shelves {
+  id uuid [pk, default: `gen_random_uuid()`]
+  location_id uuid [fk]
+  code varchar(30)
+  capacity integer [note: 'Optional; used to warn staff before over-filling a rack.']
+  is_active boolean [default: true]
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz
+  Note: 'Unique (location_id, code).'
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Membership
+// ─────────────────────────────────────────────────────────────────────────────
+
+Table member_types {
+  id uuid [pk, default: `gen_random_uuid()`]
+  code varchar(30) [unique]
+  name varchar(100)
+  max_active_loans integer [default: 3]
+  loan_duration_days integer [default: 14]
+  max_renewals integer [default: 1]
+  renewal_duration_days integer [default: 14]
+  grace_period_days integer [default: 0]
+  fine_per_day decimal(14,2) [default: 50, note: 'Never float. CHECK: all policy counters >= 0 and durations > 0.']
+  max_fine_cap decimal(14,2) [note: 'NULL = uncapped.']
+  reservation_limit integer [default: 3]
+  hold_duration_days integer [default: 3]
+  requires_approval boolean [default: false]
+  is_active boolean [default: true]
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz
+  Note: 'THE policy table. Loans snapshot member_type_id so history stays interpretable after a policy change.'
+}
+
+Table members {
+  id uuid [pk, default: `gen_random_uuid()`]
+  membership_number varchar(30) [unique, note: 'Member-facing identifier and barcode payload.']
+  user_id uuid [unique, fk]
+  member_type_id uuid [fk]
+  home_branch_id uuid [fk]
+  status member_status [default: ACTIVE]
+  joined_at timestamptz [default: `now()`]
+  expires_at timestamptz
+  date_of_birth date
+  gender varchar(20)
+  address text
+  city varchar(100)
+  occupation varchar(100)
+  notes text
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz
+  deleted_at timestamptz
+  Note: 'CHECK: expires_at IS NULL OR expires_at >= joined_at. user_id is UNIQUE — a user is at most one member.'
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Catalogue
+// ─────────────────────────────────────────────────────────────────────────────
+
+Table publishers {
+  id uuid [pk, default: `gen_random_uuid()`]
+  name varchar(200) [unique]
+  imprint varchar(200)
+  country varchar(100)
+  website varchar(255)
+  email varchar(255)
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz
+}
+
+Table authors {
+  id uuid [pk, default: `gen_random_uuid()`]
+  name varchar(200)
+  sort_name varchar(200) [note: 'Authority-file form "Martin, Robert C." — enables correct catalogue sort.']
+  biography text
+  nationality varchar(100)
+  birth_year integer
+  death_year integer
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz
+  Note: 'GIN full-text index over name + sort_name.'
+}
+
+Table categories {
+  id uuid [pk, default: `gen_random_uuid()`]
+  parent_id uuid [fk, null]
+  name varchar(150)
+  slug varchar(160) [unique]
+  description text
+  position integer [default: 0]
+  is_active boolean [default: true]
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz
+  Note: 'Self-referencing hierarchy. RESTRICT on delete so a parent cannot vanish under its children.'
+}
+
+Table tags {
+  id uuid [pk, default: `gen_random_uuid()`]
+  name varchar(60) [unique]
+  label varchar(80)
+}
+
+Table books {
+  id uuid [pk, default: `gen_random_uuid()`]
+  isbn13 varchar(20) [unique]
+  isbn10 varchar(20) [unique]
+  title varchar(400)
+  subtitle varchar(400)
+  description text
+  edition varchar(100)
+  language varchar(50) [default: 'en']
+  publication_year integer
+  publication_date date
+  page_count integer
+  publisher_id uuid [fk, null]
+  cover_image_url varchar(500)
+  call_number varchar(50) [note: 'Shelf-mark, e.g. "005.7 ROB".']
+  subjects text[] [note: 'LCSH-style headings; GIN indexed.']
+  summary text
+  is_reference_only boolean [default: false, note: 'Reference titles (dictionaries, indexes) cannot be borrowed.']
+  archived_at timestamptz
+  archived_reason varchar(255)
+  created_by uuid [fk, null]
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz
+  deleted_at timestamptz
+  Note: 'The intellectual work. Never merged with book_copies. ISBNs are unique WHERE NOT NULL semantics via PostgreSQL NULL distinctness.'
+}
+
+Table book_authors {
+  book_id uuid [pk, fk]
+  author_id uuid [pk, fk]
+  position integer [default: 0, note: 'Catalogued order; 1 = primary author.']
+  role varchar(30) [default: 'AUTHOR', note: 'AUTHOR | EDITOR | TRANSLATOR | ILLUSTRATOR']
+  Note: 'CASCADE from book; RESTRICT from author — an author with catalogue entries is never deleted.'
+}
+
+Table book_categories {
+  book_id uuid [pk, fk]
+  category_id uuid [pk, fk]
+  is_primary boolean [default: false, note: 'Partial unique index allows at most one primary per book.']
+  Note: 'CASCADE from book; RESTRICT from category.'
+}
+
+Table book_tags {
+  book_id uuid [pk, fk]
+  tag_id uuid [pk, fk]
+  Note: 'Pure join. CASCADE both ways.'
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Inventory
+// ─────────────────────────────────────────────────────────────────────────────
+
+Table book_copies {
+  id uuid [pk, default: `gen_random_uuid()`]
+  book_id uuid [fk]
+  branch_id uuid [fk]
+  location_id uuid [fk, null]
+  shelf_id uuid [fk, null]
+  accession_number varchar(50) [unique]
+  barcode varchar(64) [unique]
+  qr_token varchar(64) [unique, note: 'Independent opaque value, so a QR payload is not derivable from a sequential accession number.']
+  condition copy_condition [default: GOOD]
+  status copy_status [default: AVAILABLE]
+  acquisition_date date
+  acquisition_source varchar(50) [note: 'PURCHASE | DONATION | TRANSFER | REFUND | LOST_REPLACEMENT']
+  purchase_price decimal(14,2)
+  replacement_cost decimal(14,2)
+  notes text
+  removed_at timestamptz
+  removed_reason varchar(255)
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz
+  Note: 'The physical item. status (circulation) and condition (physical) are orthogonal: a copy can be AVAILABLE + POOR. Trigram indexes on barcode and accession_number for scanner-friendly lookup.'
+}
+
+Table copy_status_history {
+  id bigserial [pk]
+  copy_id uuid [fk]
+  from_status copy_status
+  to_status copy_status
+  from_condition copy_condition
+  to_condition copy_condition
+  reason varchar(255)
+  changed_by uuid
+  changed_at timestamptz [default: `now()`]
+  request_id varchar(64)
+  Note: 'APPEND-ONLY (database trigger blocks UPDATE/DELETE). Answers "when was COPY-001 reported lost, and by whom?" without overwriting book_copies.'
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Circulation
+// ─────────────────────────────────────────────────────────────────────────────
+
+Table loans {
+  id uuid [pk, default: `gen_random_uuid()`]
+  copy_id uuid [fk]
+  book_id uuid [fk, note: 'Denormalised from copy→book. Intentional: turns "most borrowed" into an index scan.']
+  member_id uuid [fk]
+  branch_id uuid [fk, note: 'Issuing branch. Immutable after creation.']
+  issued_by uuid [fk]
+  member_type_id uuid [fk, note: 'Policy snapshot at issue time so later policy edits cannot rewrite history.']
+  loaned_at timestamptz [default: `now()`]
+  due_date timestamptz
+  grace_until timestamptz [note: 'due_date + member_type.grace_period_days. Fine starts here, not at due_date.']
+  returned_at timestamptz
+  returned_by uuid [fk, null]
+  status loan_status [default: ACTIVE]
+  renewal_count integer [default: 0]
+  last_renewed_at timestamptz
+  lost_at timestamptz
+  damaged_at timestamptz
+  notes text
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz
+  Note: 'NEVER DELETED. Partial unique index uq_loan_one_open_per_copy guarantees one open loan per copy.'
+}
+
+Table loan_status_history {
+  id bigserial [pk]
+  loan_id uuid [fk]
+  from_status loan_status
+  to_status loan_status
+  reason varchar(255)
+  changed_by uuid
+  changed_at timestamptz [default: `now()`]
+  request_id varchar(64)
+  Note: 'APPEND-ONLY (database trigger blocks UPDATE/DELETE).'
+}
+
+Table loan_renewals {
+  id uuid [pk, default: `gen_random_uuid()`]
+  loan_id uuid [fk]
+  renewed_by uuid [fk]
+  renewed_at timestamptz [default: `now()`]
+  previous_due_date timestamptz
+  new_due_date timestamptz
+  renewal_number integer
+  previous_status varchar(30)
+  reason varchar(255)
+  Note: 'APPEND-ONLY renewal ledger. UNIQUE (loan_id, renewal_number) makes the renewal count race-proof. CHECK: new_due_date > previous_due_date.'
+}
+
+Table reservations {
+  id uuid [pk, default: `gen_random_uuid()`]
+  book_id uuid [fk, note: 'Targets the TITLE, not a copy — the expected copy may be lost, transferred, or already on loan.']
+  member_id uuid [fk]
+  branch_id uuid [fk, null]
+  position integer [note: 'FIFO queue position among ACTIVE holds. CHECK position > 0.']
+  status reservation_status [default: ACTIVE]
+  reserved_at timestamptz [default: `now()`]
+  notified_at timestamptz
+  ready_at timestamptz
+  hold_expires_at timestamptz
+  fulfilled_at timestamptz
+  fulfilled_loan_id uuid [fk, null]
+  cancelled_at timestamptz
+  cancel_reason varchar(255)
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz
+  Note: 'Partial unique indexes: one open hold per (member, book); unique (book, position) among live holds.'
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Finance — Decimal only, never float. Nothing here is deleted.
+// ─────────────────────────────────────────────────────────────────────────────
+
+Table fines {
+  id uuid [pk, default: `gen_random_uuid()`]
+  reference varchar(40) [unique, note: 'Human-facing, e.g. FNE-2026-000123.']
+  member_id uuid [fk]
+  loan_id uuid [fk, null, note: 'NOT unique. A loan may carry many manual DAMAGE/OTHER fines. One automated OVERDUE/LATE_RETURN fine per loan, enforced by partial unique index.']
+  type fine_type [default: OVERDUE]
+  amount decimal(14,2)
+  waived_amount decimal(14,2) [default: 0]
+  status fine_status [default: OUTSTANDING]
+  description varchar(500)
+  days_overdue integer [default: 0]
+  assessed_at timestamptz [default: `now()`]
+  due_date timestamptz
+  waived_at timestamptz
+  waived_by uuid [fk, null]
+  waiver_reason varchar(500)
+  created_by uuid [fk, null]
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz
+  Note: 'CHECK: amount >= 0 AND 0 <= waived_amount <= amount. A non-zero waiver must record waived_at and waiver_reason.'
+}
+
+Table fine_payments {
+  id uuid [pk, default: `gen_random_uuid()`]
+  fine_id uuid [fk]
+  receipt_number varchar(40) [unique]
+  amount decimal(14,2)
+  method payment_method
+  reference varchar(120) [note: 'M-PESA confirmation code / bank reference / transaction id.']
+  paid_at timestamptz [default: `now()`]
+  received_by uuid [fk]
+  branch_id uuid [fk, null]
+  notes varchar(255)
+  voided_at timestamptz
+  voided_by uuid [fk, null]
+  void_reason varchar(255)
+  created_at timestamptz [default: `now()`]
+  Note: 'APPEND-ONLY receipts. Voids are new columns, never deletes, so the money trail stays reconstructable. CHECK: amount > 0; a void must record both voided_at and voided_by.'
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Platform
+// ─────────────────────────────────────────────────────────────────────────────
+
+Table notifications {
+  id uuid [pk, default: `gen_random_uuid()`]
+  user_id uuid [fk]
+  type notification_type
+  title varchar(200)
+  message varchar(1000)
+  data json [note: 'Deep-link payload, e.g. { loanId, dueDate }. Never secrets.']
+  channel varchar(30) [default: 'IN_APP', note: 'EMAIL / SMS / PUSH are providers, not schema changes.']
+  action_url varchar(300)
+  read_at timestamptz
+  created_at timestamptz [default: `now()`]
+  Note: 'CASCADE from user: an ephemeral notification is not history.'
+}
+
+Table audit_logs {
+  id bigserial [pk]
+  actor_id uuid [fk, null, note: 'Set null on user delete; actor_email/actor_role below are snapshotted so history survives.']
+  actor_email varchar(255)
+  actor_role varchar(50)
+  action audit_action
+  entity_type varchar(50)
+  entity_id varchar(60)
+  description varchar(1000)
+  before json
+  after json
+  ip varchar(45)
+  user_agent text
+  request_id varchar(64)
+  created_at timestamptz [default: `now()`]
+  Note: 'APPEND-ONLY, enforced by trigger. No updated_at by design. The app role is additionally REVOKEd UPDATE, DELETE.'
+}
+
+Table settings {
+  id uuid [pk, default: `gen_random_uuid()`]
+  key varchar(100) [unique]
+  value json
+  value_type settings_value_type [default: string]
+  category varchar(50) [default: 'general']
+  description varchar(255)
+  is_public boolean [default: false, note: 'True only for the small set safe to serve before authentication.']
+  updated_by uuid [fk, null]
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz
+  Note: 'Typed runtime configuration. Reading a policy here beats hardcoding it, so business rules can be tuned without a deployment.'
+}
+
+Table digital_resources {
+  id uuid [pk, default: `gen_random_uuid()`]
+  book_id uuid [fk]
+  type digital_type [default: PDF]
+  title varchar(200)
+  storage_key varchar(500) [note: 'Private object-storage key only. Never a public URL.']
+  mime_type varchar(120)
+  size_bytes bigint
+  access_level access_level [default: MEMBER]
+  is_active boolean [default: true]
+  uploaded_by uuid [fk, null]
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz
+  Note: 'Access is served through short-lived signed URLs after an authorization check.'
+}
+
+Table digital_loans {
+  id uuid [pk, default: `gen_random_uuid()`]
+  resource_id uuid [fk]
+  member_id uuid [fk]
+  issued_at timestamptz [default: `now()`]
+  expires_at timestamptz
+  returned_at timestamptz
+  status varchar(30) [default: 'ACTIVE']
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz
+  Note: 'Partial unique index: at most one open digital loan per (member, resource).'
+}
+
+Table sync_operations {
+  id uuid [pk, note: 'Client-generated UUID so a replayed operation collapses onto the same row.']
+  user_id uuid [fk]
+  device_id varchar(100)
+  operation_type varchar(30) [note: 'BORROW | RETURN | RENEW | RESERVE']
+  payload json
+  client_timestamp timestamptz
+  base_version varchar(60) [note: 'Optimistic-concurrency token captured at queue time.']
+  sync_status varchar(20) [default: 'PENDING', note: 'PENDING | SYNCING | SUCCESS | FAILED | CONFLICT']
+  result_id varchar(60)
+  failure_code varchar(50)
+  failure_reason varchar(500)
+  synced_at timestamptz
+  created_at timestamptz [default: `now()`]
+  Note: 'V2 offline circulation queue. Schema exists now so the sync contract is settled before any client writes to it.'
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Relationships
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Identity
+Ref: role_permissions.role_id > roles.id [delete: cascade]
+Ref: role_permissions.permission_id > permissions.id [delete: cascade]
+Ref: role_permissions.granted_by > users.id [delete: set null]
+Ref: users.role_id > roles.id [delete: restrict, note: 'A role in use is never deleted.']
+Ref: users.primary_branch_id > branches.id [delete: set null]
+Ref: user_branches.user_id > users.id [delete: cascade]
+Ref: user_branches.branch_id > branches.id [delete: cascade]
+Ref: user_branches.assigned_by > users.id [delete: set null]
+Ref: sessions.user_id > users.id [delete: cascade, note: 'Sessions are ephemeral; revoking access is the goal of a user delete.']
+Ref: password_reset_tokens.user_id > users.id [delete: cascade]
+Ref: email_verification_tokens.user_id > users.id [delete: cascade]
+
+// Organisation
+Ref: branches.library_id > libraries.id [delete: restrict]
+Ref: locations.branch_id > branches.id [delete: restrict]
+Ref: shelves.location_id > locations.id [delete: restrict]
+
+// Membership
+Ref: members.user_id > users.id [delete: restrict, note: 'Circulation history references the member.']
+Ref: members.member_type_id > member_types.id [delete: restrict]
+Ref: members.home_branch_id > branches.id [delete: restrict]
+
+// Catalogue
+Ref: books.publisher_id > publishers.id [delete: restrict]
+Ref: books.created_by > users.id [delete: set null]
+Ref: categories.parent_id > categories.id [delete: restrict]
+Ref: book_authors.book_id > books.id [delete: cascade]
+Ref: book_authors.author_id > authors.id [delete: restrict]
+Ref: book_categories.book_id > books.id [delete: cascade]
+Ref: book_categories.category_id > categories.id [delete: restrict]
+Ref: book_tags.book_id > books.id [delete: cascade]
+Ref: book_tags.tag_id > tags.id [delete: cascade]
+
+// Inventory
+Ref: book_copies.book_id > books.id [delete: restrict, note: 'A book with copies is never hard-deleted — archive it.']
+Ref: book_copies.branch_id > branches.id [delete: restrict]
+Ref: book_copies.location_id > locations.id [delete: restrict]
+Ref: book_copies.shelf_id > shelves.id [delete: restrict]
+Ref: copy_status_history.copy_id > book_copies.id [delete: restrict]
+
+// Circulation
+Ref: loans.copy_id > book_copies.id [delete: restrict]
+Ref: loans.book_id > books.id [delete: restrict]
+Ref: loans.member_id > members.id [delete: restrict]
+Ref: loans.branch_id > branches.id [delete: restrict]
+Ref: loans.issued_by > users.id [delete: restrict]
+Ref: loans.returned_by > users.id [delete: set null]
+Ref: loans.member_type_id > member_types.id [delete: restrict]
+Ref: loan_status_history.loan_id > loans.id [delete: restrict]
+Ref: loan_renewals.loan_id > loans.id [delete: restrict]
+Ref: loan_renewals.renewed_by > users.id [delete: restrict]
+Ref: reservations.book_id > books.id [delete: restrict]
+Ref: reservations.member_id > members.id [delete: restrict]
+Ref: reservations.branch_id > branches.id [delete: restrict]
+Ref: reservations.fulfilled_loan_id > loans.id [delete: set null]
+
+// Finance
+Ref: fines.member_id > members.id [delete: restrict]
+Ref: fines.loan_id > loans.id [delete: restrict]
+Ref: fines.waived_by > users.id [delete: set null]
+Ref: fines.created_by > users.id [delete: set null]
+Ref: fine_payments.fine_id > fines.id [delete: restrict]
+Ref: fine_payments.received_by > users.id [delete: restrict]
+Ref: fine_payments.voided_by > users.id [delete: set null]
+Ref: fine_payments.branch_id > branches.id [delete: restrict]
+
+// Platform
+Ref: notifications.user_id > users.id [delete: cascade]
+Ref: audit_logs.actor_id > users.id [delete: set null]
+Ref: settings.updated_by > users.id [delete: set null]
+Ref: digital_resources.book_id > books.id [delete: restrict]
+Ref: digital_resources.uploaded_by > users.id [delete: set null]
+Ref: digital_loans.resource_id > digital_resources.id [delete: restrict]
+Ref: digital_loans.member_id > members.id [delete: restrict]
+Ref: sync_operations.user_id > users.id [delete: cascade]

@@ -1,0 +1,6580 @@
+/*
+ * Design tokens and layout.
+ *
+ * Plain CSS with custom properties, not a utility framework. The whole system is
+ * a few hundred lines of rules and adding a build-time CSS toolchain to express it
+ * would be cost without benefit — the number of distinct components here is small
+ * and fixed, and the tokens below are what actually keep them consistent.
+ *
+ * Two rules the layout depends on:
+ *
+ *   • Colour is NEVER the only signal. Every status badge pairs a hue with a
+ *     word, so "suspended" is legible to someone who cannot distinguish the
+ *     colours — and still legible in forced-colours mode, where custom colours
+ *     are discarded entirely.
+ *   • A visible focus ring is never removed. `:focus-visible` is styled rather
+ *     than `outline: none`, because the browsers that support it show a ring only
+ *     for keyboard interaction, which is exactly when it is wanted.
+ */
+
+:root {
+  /* Neutrals. The canvas everything sits on, and the only colours permitted to
+     carry meaning without a label. */
+  --colour-bg: #f5f7fb;
+  --colour-surface: #ffffff;
+  --colour-surface-sunken: #f1f5f9;
+  --colour-text: #111827;
+  --colour-text-strong: #0b1220;
+  --colour-muted: #64748b;
+  --colour-border: #e5eaf2;
+  --colour-border-strong: #cbd5e1;
+
+  /* Blue is the accent, and it is rationed: navigation, the primary action, links,
+     focus. Spending it on decoration devalues it. */
+  --colour-accent: #2563eb;
+  --colour-accent-strong: #1d4ed8;
+  --colour-accent-soft: #eff6ff;
+  --colour-accent-contrast: #ffffff;
+
+  /* Status hues, deliberately *not* the accent. If "healthy" and "on brand" are
+     the same blue, a good figure reads as decoration and a bad one reads as a
+     link.
+   *
+   * The amber and the red are one step darker than their palette swatches
+   * (#f59e0b, #ef4444): those are fill and stroke colours, and both fail contrast
+   * as small text — 2.0:1 and 3.8:1 against white. These are what the warning
+   * and danger colours are actually used for here — a 10px chip label, a status
+   * sentence — so the hue is right and the words stay readable. The swatches'
+   * lighter siblings carry the washes below. */
+  --colour-ok: #16a34a;
+  --colour-ok-soft: #ecfdf5;
+  --colour-warn: #b45309;
+  --colour-warn-soft: #fffbeb;
+  --colour-bad: #dc2626;
+  --colour-bad-soft: #fef2f2;
+  --colour-info: #0369a1;
+  --colour-info-soft: #f0f9ff;
+
+  --colour-sidebar: #0f1b3d;
+  --colour-sidebar-muted: #64748b;
+  --colour-sidebar-active: #eff6ff;
+  /*
+   * The navy sidebar's own foreground. A separate token rather than
+   * `--colour-text`, because that one has to stay dark for the content area in
+   * light mode — the two regions are on opposite ends of the contrast ladder and
+   * cannot share a text colour.
+   */
+  --sidebar-fg: #eef2fb;
+
+  /*
+   * Icon-box category palette.
+   *
+   * A statistic's category is carried by its icon tint, not by the accent. If
+   * every card on the row paints its icon in brand blue, the icons carry no
+   * information — the reader has to read all six labels to tell the figures
+   * apart.
+   *
+   * Each tone is a triple: a foreground for the glyph, a wash behind it, and an
+   * outline around it. So a tone class only ever sets `--tone`, `--tone-soft` and
+   * `--tone-line`, and the icon box inherits all three. The outline is what stops
+   * the box dissolving into the card behind it — a wash alone on a white card is
+   * nearly invisible at 16px.
+   *
+   * Each also has a dark-theme value in `:root[data-theme='dark']`. A light-mode
+   * outline left unoverridden would be a bright hairline around a dark icon, which
+   * is the most conspicuous thing in the panel.
+   */
+  --tone-blue: #2563eb;
+  --tone-blue-soft: #eff6ff;
+  --tone-blue-line: #dbeafe;
+  --tone-green: #16a34a;
+  --tone-green-soft: #f0fdf4;
+  --tone-green-line: #dcfce7;
+  --tone-purple: #7c3aed;
+  --tone-purple-soft: #faf5ff;
+  --tone-purple-line: #f3e8ff;
+  --tone-orange: #ea580c;
+  --tone-orange-soft: #fff7ed;
+  --tone-orange-line: #ffedd5;
+  --tone-red: #dc2626;
+  --tone-red-soft: #fef2f2;
+  --tone-red-line: #fee2e2;
+  --tone-yellow: #d97706;
+  --tone-yellow-soft: #fffbeb;
+  --tone-yellow-line: #fef3c7;
+  --tone-pink: #db2777;
+  --tone-pink-soft: #fdf2f8;
+  --tone-pink-line: #fce7f3;
+  --tone-slate: #64748b;
+  --tone-slate-soft: #f1f5f9;
+  --tone-slate-line: #e2e8f0;
+
+  /*
+   * The welcome banner's own surface. A separate token rather than
+   * `--colour-accent-soft`: at the same tint as the active navigation item, a
+   * full-width greeting reads as a selected row that happens to be enormous.
+   */
+  --colour-welcome: #f4f8ff;
+
+  /*
+   * Radii sit in the 8–12px band. A 10px corner is a card; a 24px corner is a
+   * marketing page. At the density this interface runs at, oversized radii read
+   * as a template rather than as an application.
+   */
+  --radius: 12px;
+  --radius-sm: 10px;
+  --radius-xs: 8px;
+  --space: 1rem;
+  --shadow: 0 2px 8px rgb(15 23 42 / 4%);
+  --shadow-raised: 0 2px 4px rgb(15 23 42 / 5%), 0 12px 24px rgb(15 23 42 / 8%);
+
+  /*
+   * The top bar and sidebar are the same width as each other, not the whole page.
+   *
+   * 220px is the point where the longest label that has to fit — "Roles &
+   * Permissions" — still fits on one line at 13px with its icon. Narrower and it
+   * wraps; wider and the sidebar competes with the data.
+   */
+  --sidebar-width: 13.75rem;
+  --topbar-height: 3.5rem;
+
+  color-scheme: light;
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    sans-serif;
+  line-height: 1.55;
+  -webkit-text-size-adjust: 100%;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --colour-bg: #0b1220;
+  --colour-surface: #111a2b;
+  --colour-surface-sunken: #172033;
+  --colour-text: #e2e8f0;
+  --colour-text-strong: #ffffff;
+  --colour-muted: #94a3b8;
+  --colour-border: #24304a;
+  --colour-border-strong: #334155;
+  /* A darker blue than the light theme's #2563eb: the same hue at full
+     lightness on a near-black surface vibrates rather than reads. */
+  --colour-accent: #3b82f6;
+  --colour-accent-strong: #60a5fa;
+  --colour-accent-soft: #16213c;
+  --colour-accent-contrast: #0b1220;
+  --colour-ok: #34d399;
+  --colour-ok-soft: #0f2a22;
+  --colour-warn: #fbbf24;
+  --colour-warn-soft: #2c2210;
+  --colour-bad: #f87171;
+  --colour-bad-soft: #2c1618;
+  --colour-info: #7dd3fc;
+  --colour-info-soft: #10222e;
+  --colour-sidebar: #111c3d;
+  --colour-sidebar-muted: #94a3b8;
+  --colour-sidebar-active: #16213c;
+  --sidebar-fg: #e8eefb;
+  --colour-welcome: #121e33;
+  --tone-blue: #60a5fa;
+  --tone-blue-soft: #16213c;
+  --tone-blue-line: #1e3a5f;
+  --tone-green: #4ade80;
+  --tone-green-soft: #102719;
+  --tone-green-line: #1b4429;
+  --tone-purple: #c084fc;
+  --tone-purple-soft: #251736;
+  --tone-purple-line: #3a2455;
+  --tone-orange: #fb923c;
+  --tone-orange-soft: #2b1b12;
+  --tone-orange-line: #4a2b18;
+  --tone-red: #f87171;
+  --tone-red-soft: #2c1618;
+  --tone-red-line: #452126;
+  --tone-yellow: #fbbf24;
+  --tone-yellow-soft: #2c2210;
+  --tone-yellow-line: #453215;
+  --tone-pink: #f472b6;
+  --tone-pink-soft: #2b1723;
+  --tone-pink-line: #482237;
+  --tone-slate: #94a3b8;
+  --tone-slate-soft: #1e293b;
+  --tone-slate-line: #334155;
+  --shadow: 0 1px 2px rgb(0 0 0 / 30%), 0 1px 3px rgb(0 0 0 / 22%);
+  --shadow-raised: 0 2px 6px rgb(0 0 0 / 36%), 0 14px 28px rgb(0 0 0 / 30%);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--colour-bg);
+  color: var(--colour-text);
+}
+
+h1,
+h2,
+h3 {
+  line-height: 1.25;
+  margin: 0;
+}
+
+p {
+  margin: 0;
+}
+
+code.code {
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 0.9em;
+  background: var(--colour-surface-sunken);
+  border: 1px solid var(--colour-border);
+  border-radius: 4px;
+  padding: 0.05em 0.35em;
+}
+
+/* Available to a screen reader, invisible on screen. Never `display: none`, which
+   would remove it from the accessibility tree along with from the page. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+:focus-visible {
+  outline: 2px solid var(--colour-accent);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+.link {
+  color: var(--colour-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+}
+
+.link:hover {
+  text-decoration-thickness: 2px;
+}
+
+/* ── Skip link ────────────────────────────────────────────────────────────────── */
+
+/*
+ * Off-screen until focused, then pinned to the top-left. Without it a keyboard
+ * user must Tab through the whole sidebar on every page to reach the content.
+ */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 100;
+  padding: 0.6rem 1rem;
+  background: var(--colour-accent);
+  color: var(--colour-accent-contrast);
+  border-radius: 0 0 var(--radius-sm) 0;
+}
+
+.skip-link:focus {
+  left: 0;
+}
+
+/* ── App shell ────────────────────────────────────────────────────────────────── */
+
+/*
+ * The sidebar spans both rows.
+ *
+ * It used to sit in row two alone, which left the topbar running the full width
+ * of the window: the navigation panel stopped at `--topbar-height` from the top
+ * and a white bar continued over the navy to the left edge. Spreading the sidebar
+ * across both rows is what makes the left rail read as one uninterrupted column
+ * from the first pixel to the last, with the header confined to the content side
+ * — which is also where the search field now lives.
+ */
+.shell {
+  width: 100%;
+  min-width: 0;
+  min-height: 100vh;
+  display: grid;
+  grid-template-areas:
+    'sidebar topbar'
+    'sidebar content';
+  grid-template-columns: var(--sidebar-width) 1fr;
+  grid-template-rows: var(--topbar-height) 1fr;
+}
+
+.topbar {
+  grid-area: topbar;
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0 1rem;
+  background: var(--colour-surface);
+  border-bottom: 1px solid var(--colour-border);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.topbar__brand {
+  font-weight: 600;
+  margin-right: auto;
+}
+
+.topbar__brand,
+.sidebar__brand a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.brand__mark {
+  position: relative;
+  display: block;
+  width: 2.65rem;
+  height: 2.65rem;
+  overflow: hidden;
+  flex: 0 0 auto;
+  border-radius: 0.7rem;
+}
+
+.brand__logo {
+  position: absolute;
+  top: -0.625rem;
+  left: -1.4375rem;
+  display: block;
+  width: 5.5rem;
+  height: 5.5rem;
+  max-width: none;
+}
+
+.brand__copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  line-height: 1.2;
+}
+
+.brand__name {
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+}
+
+.brand__tagline {
+  margin-top: 0.2rem;
+  color: var(--colour-sidebar-muted);
+  font-size: 0.7rem;
+  line-height: 1.35;
+}
+
+.brand--compact {
+  gap: 0.5rem;
+}
+
+.brand--compact .brand__mark {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.5rem;
+}
+
+.brand--compact .brand__logo {
+  top: -0.5rem;
+  left: -1.125rem;
+  width: 4.25rem;
+  height: 4.25rem;
+}
+
+.brand--compact .brand__name {
+  font-size: 0.98rem;
+}
+
+.topbar__account {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.topbar__email {
+  color: var(--colour-muted);
+  font-size: 0.9rem;
+}
+
+/* The menu button exists only at the mobile breakpoint; `display: none` removes
+   it from the accessibility tree along with from the layout. */
+.topbar__menu {
+  display: none;
+}
+
+/*
+ * Navy, top to bottom, sticky against the viewport.
+ *
+ * `top: 0` rather than `top: var(--topbar-height)`: the panel now spans both
+ * grid rows, so its own first row *is* the topbar row. Height is the full
+ * viewport instead of the viewport minus the header, for the same reason — and
+ * because the grid area is taller than 100vh on any page with real content,
+ * sticky still has room to hold the rail in place while the main column scrolls.
+ *
+ * The border is gone. A hairline was needed when the sidebar and the content
+ * were the same colour; navy against `--colour-bg` is its own edge.
+ *
+ * The one local custom-property assignment is the whole reason the drawer keeps
+ * its light styling: `--colour-sidebar-muted` is shared with `.drawer__link`, and
+ * redefining it on `.sidebar` cascades to this panel's descendants only. Change
+ * it in `:root` and the slide-out menu becomes pale grey text on white.
+ */
+.sidebar {
+  grid-area: sidebar;
+  position: sticky;
+  top: 0;
+  display: flex;
+  height: 100vh;
+  min-height: 20rem;
+  flex-direction: column;
+  gap: 1rem;
+  overflow: hidden;
+  background: var(--colour-sidebar);
+  color: var(--sidebar-fg);
+  --colour-sidebar-muted: #9aa7c7;
+  padding: 0.9rem 0.7rem 0.7rem;
+}
+
+.sidebar__brand {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 2.75rem;
+  padding: 0 0.2rem;
+}
+
+.sidebar__collapse {
+  color: var(--colour-sidebar-muted);
+  font-size: 1.15rem;
+}
+
+.nav-sections {
+  flex: 1;
+  overflow: auto;
+  scrollbar-width: thin;
+  /* The scrollbar must never steal the 12px gutter that separates the navigation
+     labels from the sidebar edge — an 8px-wide native scrollbar on a 240px panel
+     visibly crowds the labels. */
+  margin-right: -4px;
+  padding-right: 4px;
+}
+
+.nav-section + .nav-section {
+  margin-top: 0.75rem;
+}
+
+.nav-section__title {
+  margin: 0 0 0.25rem;
+  padding: 0 0.65rem;
+  color: var(--colour-sidebar-muted);
+  font-size: 0.63rem;
+  font-weight: 700;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+.sidebar__list,
+.drawer__list,
+.link-list,
+.session-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.sidebar__link,
+.drawer__link {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 2rem;
+  padding: 0.3rem 0.6rem;
+  border-radius: var(--radius-xs);
+  color: var(--colour-sidebar-muted);
+  text-decoration: none;
+  font-size: 0.78125rem;
+  font-weight: 500;
+  transition:
+    background-color 140ms ease,
+    color 140ms ease;
+}
+
+.sidebar__icon {
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 auto;
+}
+
+.sidebar__link-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * A translucent white wash, not `--colour-surface-sunken`. On the navy panel that
+ * token is near-white, so the old rule flashed a light-grey pill with dark text
+ * over the sidebar on hover — a hole punched in the rail.
+ */
+.sidebar__link:hover {
+  background: rgb(255 255 255 / 8%);
+  color: var(--sidebar-fg);
+}
+
+.drawer__link:hover {
+  background: var(--colour-surface-sunken);
+  color: var(--colour-text);
+}
+
+/* Icon colour follows the subject of the glyph, including in navigation and
+   inside buttons. Keep the stroke itself small and let the surrounding surface
+   remain neutral. */
+.icon--blue {
+  color: var(--tone-blue);
+}
+
+.icon--green {
+  color: var(--tone-green);
+}
+
+.icon--purple {
+  color: var(--tone-purple);
+}
+
+.icon--orange {
+  color: var(--tone-orange);
+}
+
+.icon--red {
+  color: var(--tone-red);
+}
+
+.icon--yellow {
+  color: var(--tone-yellow);
+}
+
+.icon--pink {
+  color: var(--tone-pink);
+}
+
+.icon--slate {
+  color: var(--tone-slate);
+}
+
+/*
+ * The active item is a filled accent pill.
+ *
+ * It used to be a soft wash plus a left rail, chosen for a light sidebar where a
+ * solid blue block would have been the loudest thing on the page. On navy that
+ * calculus inverts: a pale wash is barely distinguishable from the panel itself,
+ * while the accent fills the item cleanly and white-on-#2563eb clears 4.5:1. The
+ * inset rail goes away because a filled pill already says "you are here".
+ */
+.sidebar__link--current {
+  background: var(--colour-accent);
+  color: var(--colour-accent-contrast);
+  font-weight: 600;
+}
+
+/* The glyph is tinted by category through `.icon--blue` and friends; on the
+   accent pill that tint sits on its own hue and disappears. Inherit instead. */
+.sidebar__link--current .sidebar__icon {
+  color: inherit;
+}
+
+.drawer__link.sidebar__link--current {
+  background: var(--colour-surface-sunken);
+  color: var(--colour-text);
+  box-shadow: inset 3px 0 0 var(--colour-accent);
+}
+
+.sidebar__profile {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  min-width: 0;
+  padding: 0.8rem 0.25rem 0.35rem;
+  border-top: 1px solid rgb(255 255 255 / 12%);
+  color: var(--colour-text);
+  text-decoration: none;
+}
+
+.sidebar__avatar,
+.topbar__link {
+  display: grid;
+  width: 2.25rem;
+  height: 2.25rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--colour-accent) 26%, transparent);
+  border-radius: 50%;
+  background: var(--colour-accent-soft);
+  color: var(--colour-accent);
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.sidebar__profile-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  line-height: 1.35;
+}
+
+.sidebar__profile-name {
+  overflow: hidden;
+  font-size: 0.78rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar__profile-role {
+  color: var(--colour-sidebar-muted);
+  font-size: 0.69rem;
+}
+
+.content {
+  grid-area: content;
+  min-width: 0;
+  width: 100%;
+  max-width: none;
+  padding: 1.25rem 1.25rem 0;
+  /* Focus is moved here after navigation, so it must not draw a stray outline on
+     page load. Programmatic focus still announces the heading. */
+  outline: none;
+  /* The dashboard and its cards should use the full content rail after the
+     sidebar, not a centred, artificially narrow column. */
+  margin-inline: 0;
+}
+
+.shell--collapsed {
+  --sidebar-width: 5.25rem;
+}
+
+.shell--collapsed .sidebar {
+  align-items: center;
+  padding-right: 0.55rem;
+  padding-left: 0.55rem;
+}
+
+.shell--collapsed .sidebar__brand {
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/*
+ * Collapsed, the brand copy goes but so does the foot card: a two-line
+ * encouragement sentence in a 5.25rem rail would either clip or push the
+ * navigation out of view, and a note whose job is to be read cannot be read
+ * truncated anyway. The rail keeps the panel's silhouette; the sentence comes
+ * back with the labels.
+ */
+.shell--collapsed .brand__copy,
+.shell--collapsed .nav-section__title,
+.shell--collapsed .sidebar__profile-copy,
+.shell--collapsed .sidebar__foot-label,
+.shell--collapsed .sidebar__foot-note {
+  display: none;
+}
+
+.shell--collapsed .sidebar__list {
+  align-items: center;
+}
+
+.shell--collapsed .sidebar__link {
+  width: 2.8rem;
+  justify-content: center;
+  padding: 0.4rem;
+}
+
+.shell--collapsed .sidebar__link-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.shell--collapsed .sidebar__profile {
+  justify-content: center;
+  width: 100%;
+}
+
+.drawer {
+  border: 0;
+  padding: 1rem;
+  border-radius: var(--radius);
+  background: var(--colour-surface);
+  color: var(--colour-text);
+  width: min(20rem, 90vw);
+}
+
+.drawer::backdrop {
+  background: rgb(0 0 0 / 45%);
+}
+
+.drawer__title {
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.drawer__brand {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+  color: var(--colour-text);
+}
+
+.drawer .nav-section__title {
+  color: var(--colour-muted);
+}
+
+.drawer .nav-section + .nav-section {
+  margin-top: 1.1rem;
+}
+
+/* ── Page furniture ───────────────────────────────────────────────────────────── */
+
+.page-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.page-header__eyebrow {
+  font-size: 0.8rem;
+  margin-bottom: 0.15rem;
+}
+
+.page-header__title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.028em;
+  color: var(--colour-text-strong);
+}
+
+.page-header__subtitle {
+  color: var(--colour-muted);
+  font-size: 0.8125rem;
+  margin-top: 0.15rem;
+  max-width: 68ch;
+}
+
+.page-header__actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.grid {
+  display: grid;
+  gap: var(--space);
+}
+
+.grid--two {
+  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+}
+
+/*
+ * A card.
+ *
+ * Cards are containers, not features. Every one has the same border, radius and
+ * shadow, and nothing on the page is elevated except something the user can act on —
+ * otherwise the dashboard becomes a pile of competing boxes and the data stops being
+ * the loudest thing in it.
+ */
+.card {
+  display: flex;
+  flex-direction: column;
+  background: var(--colour-surface);
+  border: 1px solid var(--colour-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+/*
+ * No bottom margin. Cards are laid out in grids whose `gap` is the spacing, and a
+ * margin on top of a gap produces uneven vertical rhythm the moment two cards of
+ * different heights sit side by side.
+ */
+.card--stack {
+  margin-bottom: 1rem;
+}
+
+.card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.6rem 0.9rem;
+  border-bottom: 1px solid var(--colour-border);
+  flex: 0 0 auto;
+  min-height: 2.75rem;
+}
+
+/*
+ * 14px/600. The header is the only element on a card allowed to be bolder than the
+ * body, because it is what a librarian scans the page for when they land on it.
+ */
+.card__title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: -0.011em;
+}
+
+.card__description {
+  color: var(--colour-muted);
+  font-size: 0.75rem;
+  margin-top: 0.1rem;
+}
+
+.card__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 0 0 auto;
+}
+
+.card__body {
+  padding: 0.85rem 0.9rem;
+  flex: 1 1 auto;
+}
+
+.card__body--flush {
+  padding: 0;
+}
+
+/*
+ * A "View All" affordance. Text-only links in a card header are easy to miss
+ * because they look like part of the title, so these carry an arrow and a
+ * consistent hit area.
+ */
+.card-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--colour-accent);
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  padding: 0.2rem 0.15rem;
+  border-radius: var(--radius-xs);
+}
+
+.card-link:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.prose {
+  white-space: pre-wrap;
+}
+
+/* Prose that is standing in for absent content. Muted rather than hidden, because
+   "no description recorded" is information the reader asked for. */
+.prose--muted {
+  color: var(--colour-muted);
+  font-style: italic;
+}
+
+/* A wrapping row of classification chips. */
+.tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+/* ── Buttons ──────────────────────────────────────────────────────────────────── */
+
+/*
+ * Buttons.
+ *
+ * 13px/600 and a 38px row. The height is a deliberate trade: 44px is the touch
+ * guideline, but a desk librarian lives in this interface for a full shift and 44px
+ * buttons make a filter bar a whole row of it. The small variant drops to 32px for
+ * table actions, and the mobile breakpoint restores a full-height primary action.
+ */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.9rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--colour-border);
+  background: var(--colour-surface);
+  color: var(--colour-text);
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  min-height: 2.375rem;
+  transition:
+    background-color 130ms ease,
+    border-color 130ms ease,
+    color 130ms ease;
+}
+
+.btn:hover:not(:disabled) {
+  border-color: var(--colour-border-strong);
+  background: var(--colour-surface-sunken);
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.btn--sm {
+  min-height: 2rem;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.75rem;
+}
+
+.btn--primary {
+  background: var(--colour-accent);
+  border-color: var(--colour-accent);
+  color: var(--colour-accent-contrast);
+}
+
+.btn--primary:hover:not(:disabled) {
+  background: var(--colour-accent-strong);
+  border-color: var(--colour-accent-strong);
+}
+
+/*
+ * The default variant, and the base `.btn` already describes it: a surface fill
+ * with a border. Declared explicitly anyway because `Button` emits `btn--secondary`
+ * for every unlabelled button, and an explicit rule is what stops a future change
+ * to `.btn` silently restyling every secondary button in the app.
+ */
+.btn--secondary {
+  background: var(--colour-surface);
+  border-color: var(--colour-border);
+  color: var(--colour-text);
+}
+
+.btn--secondary:hover:not(:disabled) {
+  border-color: var(--colour-border-strong);
+  background: var(--colour-surface-sunken);
+}
+
+.btn--danger {
+  background: var(--colour-bad);
+  border-color: var(--colour-bad);
+  color: #fff;
+}
+
+.btn--danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--colour-bad) 86%, black);
+  border-color: color-mix(in srgb, var(--colour-bad) 86%, black);
+}
+
+.btn--ghost {
+  background: transparent;
+  border-color: transparent;
+}
+
+.btn--ghost:hover:not(:disabled) {
+  background: var(--colour-surface-sunken);
+  border-color: transparent;
+}
+
+.btn__spinner {
+  width: 0.85em;
+  height: 0.85em;
+  border: 2px solid currentcolor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+/* Respect a stated preference for less motion: the spinner is the only animation,
+   and a spinning element with no `prefers-reduced-motion` guard is a known
+   vestibular trigger. */
+@media (prefers-reduced-motion: reduce) {
+  .btn__spinner {
+    animation-duration: 2s;
+  }
+
+  .splash__mark {
+    animation: none;
+  }
+}
+
+/* ── Forms ────────────────────────────────────────────────────────────────────── */
+
+/*
+ * An input with something inside its right edge — currently only the password
+ * visibility toggle. `position: relative` on the wrapper rather than on the input
+ * is load-bearing: an absolutely positioned child of the `<input>` would be clipped
+ * to the input's own box and, on some engines, scroll with its text.
+ */
+.input-affix {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.input--affixed {
+  padding-right: 2.5rem;
+}
+
+.input-affix__toggle {
+  position: absolute;
+  right: 0.4rem;
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--colour-muted);
+  cursor: pointer;
+}
+
+.input-affix__toggle:hover:not(:disabled) {
+  background: var(--colour-surface-sunken);
+  color: var(--colour-text);
+}
+
+.input-affix__toggle:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space);
+}
+
+.form__row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: var(--space);
+}
+
+.form__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: var(--space);
+}
+
+.form__error {
+  background: color-mix(in srgb, var(--colour-bad) 12%, var(--colour-surface));
+  border: 1px solid var(--colour-bad);
+  border-radius: var(--radius-sm);
+  padding: 0.6rem 0.75rem;
+  color: var(--colour-text);
+}
+
+/* The text is the message; the border is reinforcement. Never colour alone. */
+.form__error::before {
+  content: '⚠ ';
+}
+
+.form__note {
+  color: var(--colour-muted);
+}
+
+/*
+ * A neutral confirmation, deliberately not green: green here would imply the
+ * requested action succeeded, and "check your email" has not been proven yet.
+ */
+.form__notice {
+  background: color-mix(in srgb, var(--colour-info) 10%, var(--colour-surface));
+  border: 1px solid var(--colour-info);
+  border-radius: var(--radius-sm);
+  padding: 0.6rem 0.75rem;
+  color: var(--colour-text);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.field--checkbox {
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.field--checkbox .field__hint {
+  flex-basis: 100%;
+}
+
+.field__label {
+  font-weight: 500;
+  font-size: 0.9rem;
+}
+
+.field__label--inline {
+  font-weight: 400;
+}
+
+.field__required {
+  color: var(--colour-bad);
+  margin-left: 0.15rem;
+}
+
+.field__hint {
+  font-size: 0.85rem;
+  color: var(--colour-muted);
+}
+
+.field__error {
+  font-size: 0.85rem;
+  color: var(--colour-bad);
+  font-weight: 500;
+}
+
+/*
+ * Inputs.
+ *
+ * 13px and a 40px row, matching the button height so a form's controls line up
+ * without any per-field correction. The placeholder is deliberately muted at the
+ * same weight as the value: a lighter placeholder is read as a filled field by
+ * anyone checking a form before submitting.
+ */
+.input {
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--colour-border);
+  border-radius: var(--radius-sm);
+  background: var(--colour-surface);
+  color: var(--colour-text);
+  font: inherit;
+  font-size: 0.8125rem;
+  width: 100%;
+  min-height: 2.5rem;
+  transition:
+    border-color 130ms ease,
+    box-shadow 130ms ease;
+}
+
+.input::placeholder {
+  color: color-mix(in srgb, var(--colour-muted) 78%, transparent);
+}
+
+.input:hover:not(:disabled):not(:focus) {
+  border-color: var(--colour-border-strong);
+}
+
+/*
+ * Focus is a border colour plus a soft ring, not an outline: an outline sits
+ * outside the control and at this density it collides with the neighbouring field's
+ * border. The ring is the same accent at low alpha, so it reads as one focus state
+ * rather than a border change plus a separate glow.
+ */
+.input:focus-visible {
+  border-color: var(--colour-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--colour-accent) 18%, transparent);
+  outline: none;
+}
+
+.input:disabled {
+  background: var(--colour-surface-sunken);
+  color: var(--colour-muted);
+  cursor: not-allowed;
+}
+
+.input[aria-invalid='true'] {
+  border-color: var(--colour-bad);
+  border-width: 2px;
+}
+
+/*
+ * `SelectField` emits `className="input select"`. A native `<select>` ignores
+ * `font: inherit` on some engines and renders at the platform default size, so the
+ * field is a different height from every text input beside it. `appearance: none`
+ * drops the OS dropdown arrow, which is replaced by a background chevron so the
+ * control still reads as a menu without relying on a UA-drawn icon.
+ */
+.select {
+  appearance: none;
+  padding-right: 2rem;
+  cursor: pointer;
+  background-image:
+    linear-gradient(45deg, transparent 50%, currentcolor 50%),
+    linear-gradient(135deg, currentcolor 50%, transparent 50%);
+  background-position:
+    calc(100% - 1rem) calc(50% + 1px),
+    calc(100% - 0.7rem) calc(50% + 1px);
+  background-size:
+    5px 5px,
+    5px 5px;
+  background-repeat: no-repeat;
+}
+
+.select:disabled {
+  cursor: not-allowed;
+}
+
+.textarea {
+  resize: vertical;
+}
+
+.select--compact {
+  width: auto;
+  min-height: 2rem;
+  padding: 0.15rem 0.4rem;
+}
+
+.checkbox {
+  width: 1.15rem;
+  height: 1.15rem;
+  accent-color: var(--colour-accent);
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space);
+  margin-bottom: var(--space);
+}
+
+.filters__grow {
+  flex: 1 1 16rem;
+}
+
+/* Settings: a section rail beside the section itself. The rail is what keeps a
+   long list of categories navigable, and the active entry is a link-shaped
+   button because it changes what is shown rather than where the URL points —
+   the section also lives in the query string, so it can be shared. */
+.settings-layout {
+  display: grid;
+  grid-template-columns: minmax(11rem, 16rem) minmax(0, 1fr);
+  align-items: start;
+  gap: 1rem;
+}
+
+.settings-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.4rem;
+  border: 1px solid var(--colour-border);
+  border-radius: var(--radius);
+  background: var(--colour-surface);
+}
+
+.settings-nav__button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.5rem 0.65rem;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--colour-text);
+  font-size: 0.8125rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.settings-nav__button:hover {
+  background: var(--colour-surface-sunken);
+}
+
+.settings-nav__button--active {
+  background: var(--colour-accent-soft);
+  color: var(--colour-accent);
+  font-weight: 600;
+}
+
+.settings-panels {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
+}
+
+/* One section at a time: a heading that names what the cards below belong to,
+   so "Fines & Payments" is said once rather than repeated as every card title. */
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.settings-section__header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.settings-section__title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 650;
+}
+
+.settings-section__description {
+  margin: 0;
+  max-width: 60ch;
+  color: var(--colour-muted);
+  font-size: 0.875rem;
+}
+
+/* The policy form. Fields are their own blocks rather than a table of
+   key/value pairs: a label, a sentence of explanation and one control reads as
+   a form, which is what an administrator is actually filling in. On a wide
+   screen two columns use the space beside a short field instead of leaving it
+   blank; on a narrow one they collapse to one, never to a squeezed pair. */
+.settings-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+  gap: var(--space);
+}
+
+.settings-field {
+  min-width: 0;
+}
+
+/* A save bar under the section's own fields: the button belongs to the section
+   it validates, and the note beside it is where the audit guarantee is said —
+   once, rather than under every field. */
+.settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space);
+  margin-top: var(--space);
+  padding-top: var(--space);
+  border-top: 1px solid var(--colour-border);
+}
+
+.settings-actions .form__note {
+  flex: 1 1 18rem;
+  margin: 0;
+}
+
+@media (max-width: 48rem) {
+  .settings-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .settings-nav {
+    flex-direction: row;
+    overflow-x: auto;
+  }
+
+  .settings-nav__button {
+    flex: 0 0 auto;
+  }
+
+  .settings-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ── Tables ───────────────────────────────────────────────────────────────────── */
+
+/*
+ * `overflow-x: auto` on the wrapper keeps a wide table scrollable instead of
+ * forcing the whole page sideways, and `tabIndex={0}` on the wrapper in Table.tsx
+ * makes that scroll region reachable by keyboard — a scrollable region that cannot
+ * be focused is unreachable for anyone not using a mouse.
+ */
+.table-wrapper {
+  overflow-x: auto;
+  border: 1px solid var(--colour-border);
+  border-radius: var(--radius-sm);
+}
+
+/* A table that is the whole body of a card is already inside a bordered, rounded
+   container; a second border on the wrapper is a visible double line. */
+.card__body--flush .table-wrapper {
+  border: 0;
+  border-radius: 0;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+}
+
+/*
+ * 0.5rem of vertical padding plus a 20px line box is a 36px row, which is the
+ * floor at which a table still reads as a list of records rather than a stack of
+ * labels. Anything taller and a five-row dashboard table stops fitting beside the
+ * notice board it is supposed to be compared against.
+ */
+.table thead th {
+  background: var(--colour-surface-sunken);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.045em;
+  color: var(--colour-muted);
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+  /* Sticky headers scroll *under* later rows on some engines without a stacking
+     context; the z-index plus the opaque background above is what keeps a scrolled
+     row from showing through the header. */
+  z-index: 1;
+}
+
+.table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+/*
+ * Row hover is a 3% wash, not the sunken surface colour. At full strength a hovered
+ * row reads as a selected row, and a librarian clicking through a register would
+ * briefly believe a record was selected when nothing was.
+ */
+.table tbody tr:hover {
+  background: color-mix(in srgb, var(--colour-text) 3%, transparent);
+}
+
+/* Row height is load-bearing. 36px is the floor at which a table still reads as a
+   list of records rather than a stack of labels; anything taller and the dashboard's
+   five-row circulation table stops sitting beside the notice board it is meant to be
+   compared against. */
+.table th,
+.table td {
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid var(--colour-border);
+  vertical-align: middle;
+}
+
+.table__cell--right {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.cell-stack {
+  display: flex;
+  flex-direction: column;
+}
+
+.cell-stack__primary {
+  font-weight: 500;
+}
+
+/*
+ * A due date that has already passed. The colour is the warning, but the text still
+ * says "4 days overdue" underneath — colour alone would leave a screen reader and a
+ * colour-blind reader with a date and no conclusion drawn from it.
+ */
+.cell-stack__secondary--bad {
+  font-size: 0.82rem;
+  color: var(--colour-bad);
+  font-weight: 500;
+}
+
+.cell-stack__secondary {
+  font-size: 0.82rem;
+  color: var(--colour-muted);
+}
+
+/* ── Pagination ───────────────────────────────────────────────────────────────── */
+
+.pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: var(--space);
+}
+
+.pagination__controls {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.pagination__pages {
+  display: flex;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  gap: 0.2rem;
+}
+
+.pagination__gap {
+  padding: 0 0.25rem;
+  color: var(--colour-muted);
+}
+
+.pagination__summary,
+.pagination__limit {
+  font-size: 0.85rem;
+  color: var(--colour-muted);
+}
+
+.pagination__limit {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+/* ── Badges, chips, lists ─────────────────────────────────────────────────────── */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.0625rem 0.4375rem;
+  border-radius: 999px;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  /* A tinted fill, not a solid one. A filled status pill at full saturation draws
+     as much attention as the number it sits beside, and a column of five green
+     pills turns the table into a green wall. */
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.badge--ok {
+  color: var(--colour-ok);
+  background: var(--colour-ok-soft);
+  border-color: color-mix(in srgb, var(--colour-ok) 22%, transparent);
+}
+
+.badge--warn {
+  color: var(--colour-warn);
+  background: var(--colour-warn-soft);
+  border-color: color-mix(in srgb, var(--colour-warn) 24%, transparent);
+}
+
+.badge--bad {
+  color: var(--colour-bad);
+  background: var(--colour-bad-soft);
+  border-color: color-mix(in srgb, var(--colour-bad) 22%, transparent);
+}
+
+.badge--info {
+  color: var(--colour-info);
+  background: var(--colour-info-soft);
+  border-color: color-mix(in srgb, var(--colour-info) 22%, transparent);
+}
+
+.badge--neutral {
+  color: var(--colour-muted);
+  background: var(--colour-surface-sunken);
+  border-color: var(--colour-border);
+}
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.chip {
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid var(--colour-border);
+  background: var(--colour-surface);
+  color: var(--colour-text);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.chip:hover {
+  border-color: var(--colour-bad);
+  color: var(--colour-bad);
+}
+
+/* A selected picker chip (multi-select fields). The accent reads as "pressed"
+ * and overrides the destructive hover colour, which would otherwise make the
+ * picker look like a delete button. */
+.chip--on,
+.chip--on:hover {
+  border-color: var(--colour-accent);
+  background: color-mix(in srgb, var(--colour-accent) 12%, var(--colour-surface));
+  color: var(--colour-accent);
+}
+
+.link-list li,
+.session-list__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space);
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--colour-border);
+}
+
+.link-list li:last-child,
+.session-list__item:last-child {
+  border-bottom: 0;
+}
+
+.link-list__aside,
+.session-list__meta {
+  font-size: 0.85rem;
+  color: var(--colour-muted);
+}
+
+.session-list__device {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 500;
+}
+
+/* ── States ───────────────────────────────────────────────────────────────────── */
+
+.state,
+.state-page {
+  padding: 1.5rem;
+  text-align: center;
+  color: var(--colour-muted);
+}
+
+.state-page {
+  padding: 3rem 1rem;
+}
+
+.state-page__code {
+  font-size: 3rem;
+  font-weight: 700;
+  color: var(--colour-border);
+  line-height: 1;
+}
+
+.state-page__title {
+  font-size: 1.4rem;
+  margin: 0.5rem 0;
+  color: var(--colour-text);
+}
+
+.state-page__actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: center;
+  margin-top: var(--space);
+}
+
+.state-page__message {
+  max-width: 34rem;
+  margin: 0 auto;
+}
+
+.state-page__meta {
+  margin-top: 0.5rem;
+  font-size: 0.78rem;
+}
+
+.state__title {
+  font-weight: 600;
+  color: var(--colour-text);
+}
+
+/* The error and empty messages sit under a title that may be absent, so they
+   carry their own weight and colour rather than inheriting the muted default. */
+.state__message {
+  font-weight: 500;
+  color: var(--colour-text);
+}
+
+.state__description {
+  margin-top: 0.25rem;
+  font-size: 0.82rem;
+  color: var(--colour-muted);
+}
+
+.state__action {
+  margin-top: 0.75rem;
+}
+
+/*
+ * An empty panel is a normal state, not a failure, so it gets a dashed edge rather
+ * than the red border of `.state--error`. A librarian seeing a dashed box knows the
+ * table is empty; the same box in red would read as a broken request.
+ *
+ * Tight on purpose. A dashboard's rail stacks four of these when the library is
+ * new, and at the padding a full-page empty state would use they stop being a
+ * card and start being a column of holes. The icon in its light circle gives each
+ * one a centre so it reads as a card that is deliberately quiet rather than as
+ * one that failed to render — and `justify-items: center` puts the circle, the
+ * title and the sentence on the same axis, which is what stops the block looking
+ * like a caption that drifted left.
+ */
+.state__art {
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  background: var(--colour-surface-sunken);
+  color: var(--colour-muted);
+}
+
+.state--empty {
+  display: grid;
+  justify-items: center;
+  /* Centres the block when a flex parent grows the card past it — which is what
+     the duo's equal-height cards do — and is a no-op when the content sets the
+     height on its own. */
+  align-content: center;
+  gap: 0.2rem;
+  border: 1px dashed var(--colour-border);
+  border-radius: var(--radius-sm);
+  padding: 0.9rem 0.75rem;
+  /*
+   * The panel's own tint, at half strength, fading to surface by the bottom-right
+   * corner. `--panel-tint` is inherited, so an empty feed inside the green activity
+   * panel blends green and an empty one inside the amber dates panel blends amber;
+   * outside any panel the variable falls back to blue. An empty state is the one
+   * place a card has nothing else going on, so it borrows the colour of the card
+   * it is sitting in rather than sitting as a plain dashed box.
+   */
+  background: linear-gradient(
+    160deg,
+    color-mix(in srgb, var(--panel-tint, var(--tone-blue)) 6%, var(--colour-surface)) 0%,
+    var(--colour-surface) 72%
+  );
+}
+
+/* The grid's `gap` is the spacing here, so the margins these two carry as
+   block-level siblings would stack on top of it. */
+.state--empty .state__title,
+.state--empty .state__description {
+  margin-top: 0;
+}
+
+.state--error {
+  border: 1px solid var(--colour-bad);
+  border-radius: var(--radius-sm);
+}
+
+.skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.skeleton__row {
+  height: 1.6rem;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(
+    90deg,
+    var(--colour-surface-sunken),
+    var(--colour-border),
+    var(--colour-surface-sunken)
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton__row {
+    animation: none;
+  }
+}
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0.75rem;
+  margin-bottom: var(--space);
+}
+
+/*
+ * `.stat` is the plain figure used on register pages (fines, payments) as opposed to
+ * `.stat-card`, which is the dashboard's linked figure with an icon box. They are
+ * different components on purpose — a register page has no category to tint by, and
+ * borrowing the dashboard's card there would put a link icon on a figure that is
+ * not a link.
+ */
+.stat {
+  border: 1px solid var(--colour-border);
+  border-radius: var(--radius-sm);
+  padding: 0.6rem 0.7rem;
+  background: var(--colour-surface);
+}
+
+.stat__label {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  color: var(--colour-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.045em;
+}
+
+.stat__value {
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.stat__hint {
+  font-size: 0.75rem;
+  color: var(--colour-muted);
+}
+
+.stat--ok .stat__value {
+  color: var(--colour-ok);
+}
+
+.stat--warn .stat__value {
+  color: var(--colour-warn);
+}
+
+.stat--bad .stat__value {
+  color: var(--colour-bad);
+}
+
+/* ── Dialog ───────────────────────────────────────────────────────────────────── */
+
+.dialog {
+  border: 1px solid var(--colour-border);
+  border-radius: var(--radius);
+  padding: 0;
+  background: var(--colour-surface);
+  color: var(--colour-text);
+  width: min(32rem, 92vw);
+  max-height: 85vh;
+  overflow: auto;
+}
+
+.dialog--lg {
+  width: min(48rem, 94vw);
+}
+
+.dialog--sm {
+  width: min(24rem, 92vw);
+}
+
+.dialog::backdrop {
+  background: rgb(0 0 0 / 45%);
+}
+
+.dialog__panel {
+  padding: 1rem;
+}
+
+.dialog__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space);
+}
+
+.dialog__title {
+  font-size: 1.1rem;
+}
+
+.dialog__description,
+.dialog__message {
+  color: var(--colour-muted);
+  margin-top: 0.35rem;
+}
+
+.dialog__body {
+  margin-top: var(--space);
+}
+
+.dialog__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: var(--space);
+  padding-top: var(--space);
+  border-top: 1px solid var(--colour-border);
+}
+
+.dialog__close {
+  background: none;
+  border: 0;
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--colour-muted);
+  padding: 0 0.25rem;
+}
+
+/* ── Auth screens ─────────────────────────────────────────────────────────────── */
+
+.auth {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+}
+
+.auth__panel {
+  width: min(26rem, 100%);
+  background: var(--colour-surface);
+  border: 1px solid var(--colour-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 1.5rem;
+}
+
+.auth__brand {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--colour-muted);
+}
+
+.auth__title {
+  font-size: 1.4rem;
+  margin: 0.25rem 0;
+}
+
+.auth__subtitle {
+  color: var(--colour-muted);
+  margin-bottom: var(--space);
+}
+
+.auth__footer {
+  margin-top: var(--space);
+  padding-top: var(--space);
+  border-top: 1px solid var(--colour-border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+}
+
+/* ── Toasts ───────────────────────────────────────────────────────────────────── */
+
+.toasts {
+  position: fixed;
+  bottom: 1rem;
+  right: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  z-index: 60;
+  max-width: min(24rem, calc(100vw - 2rem));
+}
+
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--colour-border);
+  background: var(--colour-surface);
+  box-shadow: var(--shadow);
+}
+
+.toast--success {
+  border-left: 4px solid var(--colour-ok);
+}
+
+.toast--error {
+  border-left: 4px solid var(--colour-bad);
+}
+
+.toast--info {
+  border-left: 4px solid var(--colour-info);
+}
+
+.toast__message {
+  flex: 1;
+}
+
+.toast__close {
+  background: none;
+  border: 0;
+  cursor: pointer;
+  font-size: 1.1rem;
+  line-height: 1;
+  color: var(--colour-muted);
+}
+
+/* ── Splash ───────────────────────────────────────────────────────────────────── */
+
+.splash {
+  min-height: 100vh;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: var(--space);
+  color: var(--colour-muted);
+}
+
+.splash__mark {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  border: 3px solid var(--colour-border);
+  border-top-color: var(--colour-accent);
+  animation: spin 0.9s linear infinite;
+}
+
+/* The route-level guard's label. Kept visible rather than `visually-hidden` because
+   a full-page wait with nothing on screen reads as a hang. */
+.splash__label {
+  font-size: 0.85rem;
+}
+
+/* ── Details list ─────────────────────────────────────────────────────────────── */
+
+.details {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: 0.75rem;
+  margin: 0;
+}
+
+/*
+ * `DescriptionItem` wraps each `dt`/`dd` pair in a div so a `<dl>` may use a grid.
+ * Without a rule for it the pairs are still blocks, but the grid gap cannot be
+ * expressed and the term/value rhythm collapses to whatever the browser defaults to.
+ */
+.details__item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.details__term {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--colour-muted);
+}
+
+.details__value {
+  margin: 0;
+  font-weight: 500;
+}
+
+.details__aside {
+  display: block;
+  font-size: 0.82rem;
+  color: var(--colour-muted);
+  font-weight: 400;
+}
+
+/* ── Breakpoint: one column ───────────────────────────────────────────────────── */
+
+@media (max-width: 48rem) {
+  .shell {
+    grid-template-areas:
+      'topbar'
+      'content';
+    grid-template-columns: 1fr;
+  }
+
+  .topbar__menu {
+    display: inline-flex;
+  }
+
+  .sidebar {
+    display: none;
+  }
+
+  .topbar__email {
+    display: none;
+  }
+
+  .content {
+    padding: 1rem;
+  }
+
+  /*
+   * The table becomes a card list. Each cell carries its column name as a
+   * `data-label`, rendered as a block above the value — the markup stays a real
+   * table, so nothing about the semantics changes with the viewport.
+   */
+  .table thead {
+    display: none;
+  }
+
+  .table,
+  .table tbody,
+  .table tr,
+  .table td {
+    display: block;
+    width: 100%;
+  }
+
+  .table tr {
+    border-bottom: 1px solid var(--colour-border);
+    padding: 0.4rem 0;
+  }
+
+  .table tbody tr:last-child {
+    border-bottom: 0;
+  }
+
+  .table td {
+    border-bottom: 0;
+    padding: 0.2rem 0.7rem;
+  }
+
+  .table td::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--colour-muted);
+  }
+
+  .table__cell--secondary {
+    display: none;
+  }
+
+  .table td.table__cell--right {
+    text-align: left;
+  }
+}
+
+/* ── Forced colours ───────────────────────────────────────────────────────────── */
+
+/*
+ * In forced-colours mode the OS discards author colours, so the borders and box
+ * shadows that carried the status information disappear. `forced-color-adjust`
+ * keeps them, which is what makes a suspended member distinguishable from an
+ * active one for a user who relies on high contrast.
+ */
+@media (forced-colors: active) {
+  .badge,
+  .card,
+  .table th,
+  .table td,
+  .input,
+  .btn {
+    border: 1px solid CanvasText;
+  }
+
+  .sidebar__link--current {
+    outline: 2px solid Highlight;
+  }
+}
+
+/* ── Soma360 authentication shell ─────────────────────────────────────────────── */
+
+.auth {
+  min-height: 100vh;
+  min-height: 100svh;
+  grid-template-columns: minmax(0, 1fr) minmax(24rem, 0.82fr);
+  place-items: stretch;
+  padding: 0;
+  background: var(--colour-surface);
+}
+
+/*
+ * The story panel is the one place in the application that is allowed to be a
+ * full-bleed blue field: a person arriving at /login has nothing else on screen
+ * to judge the brand by. Inside the application blue stays rationed, and this
+ * panel never shares a layout with application content.
+ */
+.auth__story {
+  display: flex;
+  min-height: 100%;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: clamp(2rem, 5vw, 5.25rem);
+  background:
+    radial-gradient(ellipse at 88% 8%, rgb(96 165 250 / 28%), transparent 42%),
+    radial-gradient(ellipse at 6% 96%, rgb(29 78 216 / 45%), transparent 46%),
+    linear-gradient(160deg, #1d4ed8 0%, #1e3a8a 58%, #172554 100%);
+  color: #eff6ff;
+}
+
+.auth__story .brand__name {
+  font-size: 1.2rem;
+  color: #ffffff;
+}
+
+.auth__story .brand__tagline {
+  color: #bfdbfe;
+}
+
+.auth__story-copy {
+  max-width: 33rem;
+  padding: 2rem 0;
+}
+
+.auth__eyebrow {
+  margin-bottom: 1rem;
+  color: #93c5fd;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.auth__tagline {
+  max-width: 10ch;
+  font-size: clamp(2.4rem, 5vw, 4rem);
+  font-weight: 650;
+  letter-spacing: -0.055em;
+  line-height: 1.06;
+}
+
+.auth__description {
+  max-width: 36ch;
+  margin-top: 1.25rem;
+  color: #bfdbfe;
+  font-size: 1rem;
+}
+
+.auth__story-foot {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.85rem;
+}
+
+.auth__story-foot-text {
+  color: #93c5fd;
+  font-size: 0.8rem;
+}
+
+/* Sits on a deep-blue field, so it is drawn from the panel's own palette rather
+   than the app's accent — `var(--colour-accent)` is indistinguishable here. */
+.auth__story-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.85rem;
+  border: 1px solid rgb(255 255 255 / 38%);
+  border-radius: 999px;
+  color: #ffffff;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease;
+}
+
+.auth__story-link:hover {
+  background: rgb(255 255 255 / 14%);
+  border-color: rgb(255 255 255 / 70%);
+}
+
+/*
+ * The same illustration as the dashboard banner, recoloured for a deep-blue field.
+ * The component's light-theme defaults are brown-on-blue (`--art-wood: #1d4ed8` on
+ * `#dbeafe`) and would vanish against the gradient, so every tone is overridden
+ * here rather than the drawing being duplicated.
+ */
+.auth__story .library-art {
+  --art-halo: rgb(96 165 250 / 22%);
+  --art-wood: #dbeafe;
+  --art-line: #bfdbfe;
+  --art-rule: #60a5fa;
+  --art-page: rgb(255 255 255 / 14%);
+  --art-book-1: #60a5fa;
+  --art-book-2: #a5b4fc;
+  --art-book-3: #c084fc;
+  --art-book-4: #93c5fd;
+  --art-book-5: #fbbf24;
+  width: 15rem;
+  margin: 1.5rem auto 0;
+}
+
+.auth__panel {
+  position: relative;
+  display: flex;
+  width: auto;
+  min-height: 100%;
+  flex-direction: column;
+  justify-content: center;
+  border: 0;
+  border-radius: 0;
+  background: var(--colour-surface);
+  box-shadow: none;
+  padding: clamp(1.5rem, 5vw, 5.5rem);
+}
+
+.auth__panel-top {
+  position: absolute;
+  top: 1.5rem;
+  right: 1.5rem;
+  left: 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  color: var(--colour-text);
+}
+
+.auth__panel-top .brand {
+  display: none;
+}
+
+.auth__form-content {
+  width: min(27rem, 100%);
+  margin: 0 auto;
+}
+
+.auth__title {
+  font-size: clamp(1.65rem, 3vw, 2rem);
+  letter-spacing: -0.035em;
+}
+
+.auth__subtitle {
+  margin-top: 0.55rem;
+}
+
+/* The form, below the title. Carries the vertical rhythm so a login and a
+   registration form — different field counts — open at the same distance. */
+.auth__body {
+  margin-top: 1.1rem;
+}
+
+.auth__footer {
+  border-top-color: var(--colour-border);
+}
+
+/*
+ * A two-item row inside an auth form: the remembered-device checkbox on the left,
+ * a recovery link on the right.
+ *
+ * `align-items: start` rather than `center`: the checkbox carries a hint line, so
+ * centring would push the link down to meet it and the two items would look like
+ * they belong to each other.
+ */
+.auth__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: start;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+}
+
+/* The recovery link is not a second submit button. It gets its own class so it
+ * cannot inherit button padding from a future `.auth__row .link` rule. */
+.auth__link {
+  color: var(--colour-accent);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  padding: 0.15rem 0;
+}
+
+.auth__link:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/*
+ * The account-type selector on the sign-in form.
+ *
+ * A segmented control rather than three radio rows: radios would add ~90px
+ * above the email field and read as three separate questions, where this is one
+ * — "which kind of account am I using" — with three answers. The buttons carry
+ * `aria-pressed` instead of `aria-checked` because they do not replace an
+ * input; the label above is a `<legend>`, so the group is announced as a unit.
+ *
+ * The active segment fills with the accent (rationed elsewhere to navigation and
+ * primary actions — this IS the primary decision on this form), and the sunken
+ * track behind it is what keeps the three segments reading as one control.
+ */
+.role-select {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+
+.role-select__legend {
+  padding: 0;
+  margin-bottom: 0.4rem;
+  color: var(--colour-muted);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.role-select__options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border: 1px solid var(--colour-border);
+  border-radius: 10px;
+  background: var(--colour-surface-sunken);
+}
+
+.role-select__option {
+  appearance: none;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--colour-muted);
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  padding: 0.5rem 0.35rem;
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    color 120ms ease;
+}
+
+.role-select__option:hover {
+  color: var(--colour-text);
+  background: var(--colour-surface);
+}
+
+.role-select__option[aria-pressed='true'] {
+  background: var(--colour-accent);
+  color: var(--colour-accent-contrast);
+  box-shadow: 0 1px 2px rgb(15 23 42 / 18%);
+}
+
+.role-select__option:focus-visible {
+  outline: 2px solid var(--colour-accent);
+  outline-offset: 1px;
+}
+
+.topbar {
+  z-index: 30;
+}
+
+.topbar__brand {
+  display: inline-flex;
+  align-items: center;
+}
+
+.topbar__link {
+  width: 2rem;
+  height: 2rem;
+  background: var(--colour-surface-sunken);
+  color: var(--colour-text);
+}
+
+.sidebar__link:focus-visible,
+.drawer__link:focus-visible {
+  outline-color: var(--colour-accent);
+}
+
+@media (max-width: 48rem) {
+  .auth {
+    min-height: 100vh;
+    min-height: 100svh;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .auth__story {
+    display: none;
+  }
+
+  .auth__panel {
+    min-height: 100vh;
+    min-height: 100svh;
+    padding: 5.5rem 1.25rem 2rem;
+  }
+
+  .auth__panel-top {
+    top: 1rem;
+    right: 1rem;
+    left: 1rem;
+    justify-content: space-between;
+  }
+
+  .auth__panel-top .brand {
+    display: inline-flex;
+  }
+
+  .topbar__brand .brand__copy {
+    display: none;
+  }
+
+  .sidebar__collapse {
+    display: none;
+  }
+
+  .sidebar__icon {
+    width: 1.2rem;
+    height: 1.2rem;
+  }
+}
+
+/* ── Public landing page ─────────────────────────────────────────────────────────
+ *
+ * The one page in the application that is allowed to be spacious. It runs a fixed
+ * section rhythm — hero, value strip, about/showcase, features, how it works,
+ * modules, audience, analytics, security, call to action, footer — and alternates
+ * between the page canvas and white bands so the sections separate without
+ * borders everywhere. Each band also changes its internal composition (a split,
+ * a grid, a numbered list, a screenshot) so the page never reads as the same
+ * block repeated eight times.
+ *
+ * Widths: one 75rem (1200px) container carries every section, so the page has a
+ * single measure. Sections sit on a 4.5rem–7rem vertical rhythm.
+ *
+ * The palette is the token system's — #2563eb accent, white surface, #f5f7fb
+ * canvas, #64748b muted — with two hard-coded navy bands (#101b3d) for the hero
+ * and the analytics strip. The navy is the one colour the token system does not
+ * carry, and it is fixed across both themes because a brand band that flips with
+ * the theme stops being a brand band. The hero sits on `hero.jpg` behind a navy
+ * ramp and the closing call to action on `student-reading.jpg` behind a gradient;
+ * in both, the photograph is a backdrop and the type sits on a scrim, never
+ * directly on the picture.
+ *
+ * It deliberately contains no statistics presented as results. A marketing page
+ * that leads with numbers is a page whose numbers need a source, and this
+ * codebase has no source for any of them — both places where a figure is shown
+ * carry the caption "Interface preview — figures shown are illustrative."
+ */
+
+.landing {
+  min-height: 100vh;
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  background: var(--colour-bg);
+}
+
+.landing__main {
+  flex: 1 1 auto;
+}
+
+/* 1200px container. Every section's content passes through this one width so
+ * the page has a single measure instead of one grid per section. */
+.landing__container {
+  width: 100%;
+  max-width: 75rem;
+  margin-inline: auto;
+  padding-inline: clamp(2rem, 4vw, 3rem);
+}
+
+/* Anchored sections must clear the sticky bar when the navigation jumps to
+ * them, or the heading lands underneath it. */
+.landing section[id],
+.landing footer[id] {
+  scroll-margin-top: 5.75rem;
+}
+
+/* ── Buttons ───────────────────────────────────────────────────────────────── */
+
+.landing__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.625rem 1.1rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.2;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease,
+    transform 150ms ease;
+}
+
+.landing__btn--lg {
+  padding: 0.8rem 1.4rem;
+  font-size: 0.9375rem;
+}
+
+.landing__btn--primary {
+  background: var(--colour-accent);
+  color: var(--colour-accent-contrast);
+}
+
+.landing__btn--primary:hover {
+  background: var(--colour-accent-strong);
+  transform: translateY(-1px);
+}
+
+/* On the blue bands the button inverts: white on blue reads at every theme,
+ * where blue-on-blue would not. The text is pinned to the dark brand blue
+ * because the light-theme token is a pale sky in dark mode. */
+.landing__btn--invert {
+  background: #ffffff;
+  color: #1d4ed8;
+}
+
+.landing__btn--invert:hover {
+  background: var(--colour-accent-soft);
+  transform: translateY(-1px);
+}
+
+.landing__btn--outline {
+  background: transparent;
+  border-color: rgb(255 255 255 / 45%);
+  color: #ffffff;
+}
+
+.landing__btn--outline:hover {
+  background: rgb(255 255 255 / 12%);
+  border-color: #ffffff;
+}
+
+/* On the light footer a plain outlined button reads as a second-class action
+ * next to the filled one; the ghost keeps the hierarchy without a second
+ * competing colour. */
+.landing__btn--ghost {
+  background: transparent;
+  border-color: var(--colour-border-strong);
+  color: var(--colour-text);
+}
+
+.landing__btn--ghost:hover {
+  background: var(--colour-surface-sunken);
+  border-color: var(--colour-accent);
+  color: var(--colour-accent);
+}
+
+/* ── Navigation ────────────────────────────────────────────────────────────── */
+
+.landing__nav {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: var(--colour-surface);
+  border-bottom: 1px solid var(--colour-border);
+}
+
+.landing__nav-inner {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  height: 4.5rem;
+}
+
+.landing__brand {
+  flex: 0 0 auto;
+  text-decoration: none;
+}
+
+/* Centre-anchored rather than auto-margined: the two sides differ in width, so
+ * margin auto would sit the links off-centre by half that difference. */
+.landing__links {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 1.75rem;
+}
+
+.landing__links a {
+  color: var(--colour-muted);
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-decoration: none;
+  padding-block: 0.35rem;
+  transition: color 150ms ease;
+}
+
+.landing__links a:hover {
+  color: var(--colour-accent);
+}
+
+.landing__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
+.landing__signin {
+  color: var(--colour-text);
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-decoration: none;
+  padding: 0.5rem 0.7rem;
+  transition: color 150ms ease;
+}
+
+.landing__signin:hover {
+  color: var(--colour-accent);
+}
+
+.landing__menu-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  border: 1px solid var(--colour-border);
+  border-radius: var(--radius-sm);
+  background: var(--colour-surface);
+  color: var(--colour-text);
+  cursor: pointer;
+}
+
+.landing__menu {
+  display: none;
+  border-top: 1px solid var(--colour-border);
+  background: var(--colour-surface);
+}
+
+.landing__menu--open {
+  display: block;
+}
+
+.landing__menu-links {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 75rem;
+  margin-inline: auto;
+  padding: 0.5rem clamp(2rem, 4vw, 3rem) 1.25rem;
+}
+
+.landing__menu-links a:not(.landing__btn) {
+  padding: 0.7rem 0.25rem;
+  border-bottom: 1px solid var(--colour-border);
+  color: var(--colour-text);
+  font-size: 0.9375rem;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.landing__menu-links a:not(.landing__btn):hover {
+  color: var(--colour-accent);
+}
+
+.landing__menu-links .landing__btn {
+  margin-top: 1rem;
+}
+
+/* ── Hero ──────────────────────────────────────────────────────────────────── */
+
+/* The hero is a two-column navy band, not a photograph with text over it. The
+   picture of the product sits on the right so the first screen answers "what is
+   this?" without the reader having to scroll for it.
+
+   `hero.jpg` runs underneath as atmosphere only: the horizontal ramp is 97%
+   opaque where the copy sits and thins to 60% behind the preview, so the
+   photograph is legible on the right and invisible under the headline. The
+   photograph returns once more in the closing call to action, where there is
+   nothing left to explain. */
+.landing__hero {
+  background:
+    radial-gradient(
+      68rem 34rem at 88% -10%,
+      rgb(37 99 235 / 38%) 0%,
+      rgb(37 99 235 / 0%) 68%
+    ),
+    linear-gradient(
+      100deg,
+      rgb(16 27 61 / 97%) 0%,
+      rgb(16 27 61 / 93%) 44%,
+      rgb(16 27 61 / 60%) 100%
+    ),
+    url('./assets/hero.jpg') center / cover no-repeat,
+    #101b3d;
+  color: #ffffff;
+}
+
+.landing__hero-inner {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.18fr);
+  align-items: center;
+  gap: clamp(2rem, 5vw, 4.5rem);
+  padding-block: clamp(3.75rem, 7vw, 6rem);
+}
+
+.auth--image-story .auth__story {
+  position: relative;
+  align-items: center;
+  justify-content: center;
+  background:
+    linear-gradient(
+      125deg,
+      rgb(18 50 103 / 52%) 0%,
+      rgb(29 78 216 / 38%) 55%,
+      rgb(29 78 216 / 24%) 100%
+    ),
+    url('./assets/landing%20back.jpg') center / cover no-repeat,
+    #1d4ed8;
+  text-align: center;
+}
+
+.auth--image-story .auth__story > .brand {
+  position: absolute;
+  top: clamp(2rem, 5vw, 5.25rem);
+  left: clamp(2rem, 5vw, 5.25rem);
+}
+
+.auth--image-story .auth__story-copy {
+  width: min(100%, 38rem);
+  padding: 2rem 0 0;
+}
+
+.auth--image-story .auth__tagline,
+.auth--image-story .auth__description {
+  max-width: none;
+}
+
+.auth--image-story .auth__story-foot {
+  align-items: center;
+}
+
+/* The copy column is left-aligned and capped at a comfortable measure: a
+ * centred column of text on a wide screen runs to 90 characters a line, and the
+ * eye loses the start of the next row on the way back. */
+.landing__hero-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.landing__eyebrow {
+  margin-bottom: 1rem;
+  padding: 0.3rem 0.65rem;
+  border: 1px solid rgb(255 255 255 / 24%);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 8%);
+  color: rgb(255 255 255 / 86%);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.landing__title {
+  font-size: clamp(2.5rem, 4.6vw, 3.75rem);
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.035em;
+  text-wrap: balance;
+  max-width: 15ch;
+}
+
+.landing__lede {
+  margin-top: 1.25rem;
+  color: rgb(255 255 255 / 82%);
+  font-size: clamp(1rem, 1.4vw, 1.125rem);
+  font-weight: 400;
+  line-height: 1.65;
+  max-width: 46ch;
+}
+
+.landing__hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 0.75rem;
+  margin-top: 2rem;
+}
+
+/* Three checks rather than a logo strip. A row of borrowed customer logos is the
+ * classic way a landing page implies scale it cannot evidence. */
+.landing__proof {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem 1.4rem;
+  margin-top: 1.75rem;
+  padding: 0;
+  list-style: none;
+  color: rgb(255 255 255 / 78%);
+  font-size: 0.8125rem;
+}
+
+.landing__proof li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.landing__proof .icon {
+  color: #93c5fd;
+  flex: 0 0 auto;
+}
+
+/* ── Hero product preview ────────────────────────────────────────────────────── */
+
+.landing__hero-art {
+  position: relative;
+  min-width: 0;
+}
+
+/* The caption sits with the copy column's measure rather than under the frame,
+ * so it stays legible when the two columns stack on a phone. */
+.landing__preview-note {
+  max-width: 75rem;
+  margin: 0 auto;
+  padding: 0 clamp(2rem, 4vw, 3rem) 1.5rem;
+  color: rgb(255 255 255 / 55%);
+  font-size: 0.75rem;
+  text-align: right;
+}
+
+/* The dashboard preview: one image of the real product. The art is a cut-out, so
+ * it is left floating directly on the navy hero — no card, no border, no shadow.
+ * It fills the right-hand column and scales with it, so nothing is cropped. */
+.landing__hero-shot {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* ── Value strip ────────────────────────────────────────────────────────────── */
+
+/* The light-blue band directly under the hero. It is the one place the accent
+ * colour is used as a field rather than as a mark, and it hands the reader from
+ * the navy band back to the page canvas without a hard seam. */
+.landing__strip {
+  padding-block: clamp(2.75rem, 4vw, 3.5rem);
+  background: var(--colour-accent-soft);
+  border-block: 1px solid var(--colour-border);
+}
+
+.landing__values {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1.25rem 2rem;
+}
+
+.landing__value {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+  min-width: 0;
+  padding-right: 1rem;
+}
+
+.landing__value-title {
+  font-size: 0.9375rem;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+}
+
+.landing__value-body {
+  margin-top: 0.3rem;
+  color: var(--colour-muted);
+  font-size: 0.875rem;
+  line-height: 1.55;
+}
+
+/* ── Sections ──────────────────────────────────────────────────────────────── */
+
+.landing__section {
+  padding-block: clamp(4.5rem, 7vw, 6.5rem);
+}
+
+.landing__section--paper {
+  background: var(--colour-surface);
+}
+
+.landing__section-head {
+  max-width: 44rem;
+  margin-bottom: 2.5rem;
+}
+
+/* Centred headings over the symmetric grids — features, steps, audience — so the
+ * header and the columns below share one axis. The asymmetric sections (about,
+ * modules, security) keep theirs left. */
+.landing__section-head--center {
+  max-width: 46rem;
+  margin-inline: auto;
+  text-align: center;
+}
+
+.landing__section-head--center .landing__section-body {
+  margin-inline: auto;
+}
+
+.landing__section-eyebrow {
+  margin-bottom: 0.75rem;
+  color: var(--colour-accent);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.landing__section-title {
+  font-size: clamp(1.75rem, 3vw, 2.25rem);
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.03em;
+}
+
+.landing__section-body {
+  margin-top: 0.75rem;
+  color: var(--colour-muted);
+  font-size: 1.0625rem;
+  max-width: 54ch;
+}
+
+/* ── Icon boxes ────────────────────────────────────────────────────────────── */
+
+/* Outlined box on a category wash, matching `.stat-card__icon` and
+ * `.quick-tile__icon` exactly — one icon language across the marketing page and
+ * the application. */
+.landing__iconbox {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  flex: 0 0 auto;
+  border: 1px solid var(--tone-line, var(--colour-border));
+  border-radius: var(--radius-sm);
+  background: var(--tone-soft, var(--colour-accent-soft));
+  color: var(--tone, var(--colour-accent));
+}
+
+.landing__iconbox--lg {
+  width: 2.5rem;
+  height: 2.5rem;
+}
+
+.landing__iconbox--blue {
+  --tone: var(--tone-blue);
+  --tone-soft: var(--tone-blue-soft);
+  --tone-line: var(--tone-blue-line);
+}
+
+.landing__iconbox--green {
+  --tone: var(--tone-green);
+  --tone-soft: var(--tone-green-soft);
+  --tone-line: var(--tone-green-line);
+}
+
+.landing__iconbox--purple {
+  --tone: var(--tone-purple);
+  --tone-soft: var(--tone-purple-soft);
+  --tone-line: var(--tone-purple-line);
+}
+
+.landing__iconbox--orange {
+  --tone: var(--tone-orange);
+  --tone-soft: var(--tone-orange-soft);
+  --tone-line: var(--tone-orange-line);
+}
+
+.landing__iconbox--red {
+  --tone: var(--tone-red);
+  --tone-soft: var(--tone-red-soft);
+  --tone-line: var(--tone-red-line);
+}
+
+.landing__iconbox--yellow {
+  --tone: var(--tone-yellow);
+  --tone-soft: var(--tone-yellow-soft);
+  --tone-line: var(--tone-yellow-line);
+}
+
+.landing__iconbox--pink {
+  --tone: var(--tone-pink);
+  --tone-soft: var(--tone-pink-soft);
+  --tone-line: var(--tone-pink-line);
+}
+
+.landing__iconbox--slate {
+  --tone: var(--tone-slate);
+  --tone-soft: var(--tone-slate-soft);
+  --tone-line: var(--tone-slate-line);
+}
+
+/* ── About / product showcase ───────────────────────────────────────────────── */
+
+/* Screenshot first, copy second: the reader has just left a drawn preview, so
+ * this is where the real screen earns the promise. The frame is the same card
+ * treatment as every other surface on the page — one border, one radius. */
+.landing__showcase {
+  display: grid;
+  grid-template-columns: minmax(0, 1.08fr) minmax(0, 0.92fr);
+  align-items: center;
+  gap: clamp(2rem, 5vw, 4.5rem);
+}
+
+/* No border, no shadow, no panel: the photograph sits on the canvas with only
+ * its corner radius showing, so nothing draws a second rectangle around it. */
+.landing__showcase-figure {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: var(--radius);
+}
+
+/* Grid children default to `min-width: auto`, which lets a long word in the
+ * copy column push the screenshot narrower instead of wrapping. */
+.landing__showcase-copy,
+.landing__analytics-copy {
+  min-width: 0;
+}
+
+/* Pinned to 16:10 whatever the file's native ratio is: an unmeasured portrait
+ * photograph in a two-column grid drags the copy column taller than its own
+ * content and leaves the section unbalanced. */
+.landing__showcase-shot {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  height: auto;
+  object-fit: cover;
+}
+
+.landing__numbered {
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+  margin: 2rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.landing__numbered-item {
+  display: flex;
+  gap: 1rem;
+  padding-top: 1.1rem;
+  border-top: 1px solid var(--colour-border);
+}
+
+.landing__numbered-item:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.landing__numbered-num {
+  flex: 0 0 auto;
+  color: var(--colour-accent);
+  font-size: 1.375rem;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
+}
+
+.landing__numbered-title {
+  font-size: 0.9375rem;
+  font-weight: 650;
+}
+
+.landing__numbered-body {
+  margin-top: 0.25rem;
+  color: var(--colour-muted);
+  font-size: 0.875rem;
+  line-height: 1.55;
+}
+
+/* ── Features ──────────────────────────────────────────────────────────────── */
+
+/* A 3×2 grid of compact cards. The padding stays near the dashboard's card
+ * measure rather than the 1.75rem a marketing page would default to: six of
+ * these at marketing padding fill a 1440px screen with card and no content. */
+.landing__features {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(17.5rem, 1fr));
+  gap: 1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.landing__feature {
+  display: flex;
+  flex-direction: column;
+  padding: 1.35rem 1.35rem 1.5rem;
+  border: 1px solid var(--colour-border);
+  border-radius: var(--radius);
+  background: var(--colour-surface);
+  box-shadow: var(--shadow);
+  transition:
+    transform 200ms ease,
+    box-shadow 200ms ease,
+    border-color 200ms ease;
+}
+
+.landing__section--paper .landing__feature {
+  background: var(--colour-bg);
+}
+
+.landing__feature:hover {
+  transform: translateY(-3px);
+  border-color: var(--colour-border-strong);
+  box-shadow: var(--shadow-raised);
+}
+
+.landing__feature-title {
+  margin-top: 0.9rem;
+  font-size: 1.0625rem;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+}
+
+.landing__feature-body {
+  margin-top: 0.45rem;
+  color: var(--colour-muted);
+  font-size: 0.9375rem;
+  line-height: 1.55;
+}
+
+/* ── Modules ───────────────────────────────────────────────────────────────── */
+
+.landing__modules {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+  gap: 1.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Same card as the dashboard's — same border, radius and shadow. A softer,
+ * larger treatment here would make the two halves of the product look like two
+ * products. */
+.landing__module {
+  display: flex;
+  flex-direction: column;
+  padding: 1.5rem;
+  border: 1px solid var(--colour-border);
+  border-radius: var(--radius);
+  background: var(--colour-surface);
+  box-shadow: var(--shadow);
+  transition:
+    transform 200ms ease,
+    box-shadow 200ms ease,
+    border-color 200ms ease;
+}
+
+.landing__module:hover {
+  transform: translateY(-3px);
+  border-color: var(--colour-border-strong);
+  box-shadow: var(--shadow-raised);
+}
+
+/* The module band is a white paper strip, so the card takes the canvas tone the
+ * way `.landing__security-item` does — white on white leaves only a border, and
+ * a card you cannot see the edge of does not read as a card. Same border, same
+ * radius, same shadow as the dashboard's, which is the part that has to match. */
+.landing__section--paper .landing__module {
+  background: var(--colour-bg);
+}
+
+.landing__module-title {
+  margin-top: 1rem;
+  font-size: 1.0625rem;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+}
+
+.landing__module-body {
+  margin-top: 0.45rem;
+  color: var(--colour-muted);
+  font-size: 0.875rem;
+}
+
+.landing__module-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  margin-top: auto;
+  padding-top: 1.1rem;
+  color: var(--colour-accent);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.landing__module-link:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* ── Audience ──────────────────────────────────────────────────────────────── */
+
+/* Three cards on one axis, deliberately lighter than the feature grid: this
+ * section answers "is this for me?", not "what does it do?". */
+.landing__audience {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+  gap: 1.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.landing__audience-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 1.6rem;
+  border: 1px solid var(--colour-border);
+  border-radius: var(--radius);
+  background: var(--colour-surface);
+  box-shadow: var(--shadow);
+}
+
+.landing__audience-title {
+  margin-top: 1rem;
+  font-size: 1.125rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.landing__audience-body {
+  margin-top: 0.5rem;
+  color: var(--colour-muted);
+  font-size: 0.9375rem;
+  line-height: 1.55;
+}
+
+/* ── How it works ──────────────────────────────────────────────────────────── */
+
+.landing__steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 1.75rem 2rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.landing__step {
+  padding-top: 1.25rem;
+  border-top: 2px solid var(--colour-accent);
+}
+
+.landing__step-num {
+  display: block;
+  color: var(--colour-accent);
+  font-size: 1.75rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+
+.landing__step-title {
+  margin-top: 0.75rem;
+  font-size: 1.0625rem;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+}
+
+.landing__step-body {
+  margin-top: 0.45rem;
+  color: var(--colour-muted);
+  font-size: 0.9375rem;
+}
+
+/* ── Security ──────────────────────────────────────────────────────────────── */
+
+.landing__security {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+  gap: 1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.landing__security-item {
+  display: flex;
+  gap: 0.9rem;
+  padding: 1.5rem;
+  border: 1px solid var(--colour-border);
+  border-radius: var(--radius);
+  background: var(--colour-bg);
+}
+
+.landing__security-title {
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.landing__security-body {
+  margin-top: 0.3rem;
+  color: var(--colour-muted);
+  font-size: 0.875rem;
+}
+
+/* ── Analytics ─────────────────────────────────────────────────────────────── */
+
+/* The second navy band. It is the only other place the brand colour becomes a
+ * field, and it arrives after six light sections so the rhythm has somewhere to
+ * land before the closing call to action. */
+.landing__band {
+  background:
+    radial-gradient(
+      60rem 30rem at 12% 0%,
+      rgb(37 99 235 / 34%) 0%,
+      rgb(37 99 235 / 0%) 66%
+    ),
+    #101b3d;
+  color: #ffffff;
+  padding-block: clamp(4.5rem, 7vw, 6.5rem);
+}
+
+.landing__analytics {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: center;
+  gap: clamp(2rem, 5vw, 4rem);
+}
+
+.landing__section-eyebrow--onDark {
+  color: #93c5fd;
+}
+
+.landing__section-body--onDark {
+  color: rgb(255 255 255 / 76%);
+}
+
+.landing__panels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1.75rem;
+  padding: 0;
+  list-style: none;
+}
+
+.landing__panel-chip {
+  padding: 0.4rem 0.8rem;
+  border: 1px solid rgb(255 255 255 / 22%);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 8%);
+  color: rgb(255 255 255 / 90%);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+/* The screenshot ships with its background removed, so it composites straight
+ * onto the navy band — no panel, no border, no padding around it, only a corner
+ * radius. The caption keeps the figures presented in it labelled illustrative. */
+.landing__chart {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: var(--radius);
+}
+
+.landing__chart-shot {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.landing__chart-caption {
+  margin-top: 1rem;
+  color: rgb(255 255 255 / 55%);
+  font-size: 0.75rem;
+}
+
+/* ── Closing call to action ────────────────────────────────────────────────── */
+
+/* The reading photograph behind the closing band restates what the hero
+   promised; the gradient keeps the headline and arrows readable over it. */
+.landing__cta-band {
+  background:
+    linear-gradient(rgb(15 23 42 / 74%), rgb(30 64 175 / 70%)),
+    url('./assets/student-reading.jpg') center / cover no-repeat,
+    #2563eb;
+  color: #ffffff;
+}
+
+.landing__cta-inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem 2.5rem;
+  padding-block: clamp(3.75rem, 7vw, 5.5rem);
+}
+
+.landing__cta-copy {
+  max-width: 38rem;
+  flex: 1 1 22rem;
+}
+
+.landing__cta-title {
+  font-size: clamp(1.5rem, 3vw, 2.125rem);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.landing__cta-body {
+  margin-top: 0.6rem;
+  color: rgb(255 255 255 / 85%);
+  font-size: 1rem;
+}
+
+.landing__cta-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+/* ── Footer ────────────────────────────────────────────────────────────────── */
+
+.landing__foot {
+  background: var(--colour-surface);
+  border-top: 1px solid var(--colour-border);
+}
+
+/* Brand plus four link columns: with the modules column added, three columns
+ * would have pushed the brand block narrower than its own buttons. */
+.landing__foot-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) repeat(4, minmax(0, 1fr));
+  gap: 2rem;
+  padding-block: 3rem 2.75rem;
+}
+
+.landing__foot-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1.1rem;
+  padding-right: 1.5rem;
+}
+
+.landing__foot-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.landing__foot-legal {
+  color: var(--colour-muted);
+  font-size: 0.8125rem;
+}
+
+.landing__foot-col {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.landing__foot-head {
+  margin-bottom: 0.35rem;
+  color: var(--colour-text);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.landing__foot-col a {
+  color: var(--colour-muted);
+  font-size: 0.875rem;
+  text-decoration: none;
+  transition: color 150ms ease;
+}
+
+.landing__foot-col a:hover {
+  color: var(--colour-accent);
+}
+
+/* ── Scroll reveal ─────────────────────────────────────────────────────────── */
+
+/* Sections below the fold fade up once, as they arrive. The hero is excluded —
+ * it is visible on load — and the whole rule collapses to "show everything"
+ * under reduced motion or without an observer. */
+.landing [data-reveal] {
+  opacity: 0;
+  transform: translateY(14px);
+  transition:
+    opacity 500ms ease,
+    transform 500ms ease;
+}
+
+.landing [data-reveal].is-in {
+  opacity: 1;
+  transform: none;
+}
+
+/* ── Responsive ────────────────────────────────────────────────────────────── */
+
+@media (max-width: 60rem) {
+  .landing__links {
+    display: none;
+  }
+
+  .landing__menu-btn {
+    display: inline-flex;
+  }
+
+  /* One column, copy first: on a phone the preview follows the words rather
+   * than pushing the headline below the fold. */
+  .landing__hero-inner {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2.5rem;
+    padding-block: clamp(3rem, 8vw, 4rem);
+  }
+
+  .landing__hero-art {
+    width: min(100%, 40rem);
+    margin-inline: auto;
+  }
+
+  .landing__preview-note {
+    text-align: center;
+  }
+
+  .landing__showcase,
+  .landing__analytics {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .landing__showcase-copy {
+    order: -1;
+  }
+
+  .landing__values {
+    grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  }
+
+  .landing__foot-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .landing__foot-brand {
+    grid-column: 1 / -1;
+    padding-right: 0;
+  }
+}
+
+@media (max-width: 40rem) {
+  .landing__container {
+    padding-inline: 1.5rem;
+  }
+
+  .landing__menu-links {
+    padding-inline: 1.5rem;
+  }
+
+  .landing__preview-note {
+    padding-inline: 1.5rem;
+  }
+
+  .landing__hero-actions,
+  .landing__cta-actions {
+    /* Full-width stacked actions. Two half-width buttons on a phone puts each
+     * label on two lines and neither target is comfortably tappable. */
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .landing__hero-actions {
+    width: 100%;
+  }
+
+  .landing__proof {
+    flex-direction: column;
+    gap: 0.55rem;
+  }
+
+  .landing__values {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1.25rem;
+  }
+
+  .landing__value {
+    padding-right: 0;
+  }
+
+  .landing__btn {
+    white-space: normal;
+    text-align: center;
+  }
+}
+
+@media (max-width: 30rem) {
+  .landing__signin,
+  .landing__actions .landing__btn--primary {
+    display: none;
+  }
+
+  .landing__foot-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing [data-reveal] {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+
+  .landing__feature:hover,
+  .landing__module:hover,
+  .landing__btn:hover {
+    transform: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Soma360 application shell — header, sidebar furniture, dashboard system.
+
+   The section above established primitives (buttons, fields, tables, dialogs).
+   What follows is the composition layer: the header bar, the dashboard grid, and
+   the individual widgets. Four rules govern all of it:
+
+     1. Density. A 1440×900 viewport shows the whole dashboard without scrolling
+        sideways and with at most one short scroll vertically. Anything that does
+        not survive that test is a spacing problem, not a screen-size problem.
+     2. One rhythm. Every gap is a multiple of 4px and every radius comes from a
+        token. Alignment is what makes a dense screen look calm.
+     3. Colour is rationed. Green means "go" — the active item, the primary
+        action, a positive figure. Spending it on decoration devalues it.
+     4. Cards are containers, not features. Same border, same radius, same
+        shadow. Nothing is elevated except something the user can act on.
+   --------------------------------------------------------------------------- */
+
+/* -- Header ------------------------------------------------------------------ */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0 1.25rem;
+}
+
+/* The page title lives in the header, not in the content, on a desktop
+   application. It is chrome: it does not move when the page scrolls a long table,
+   so the user always knows where they are. */
+.topbar__heading {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.topbar__title {
+  font-size: 0.9375rem;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.topbar__context {
+  color: var(--colour-muted);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.topbar__spacer {
+  flex: 1 1 auto;
+  min-width: 0.5rem;
+}
+
+/*
+ * Global search — a working field, on every page including the dashboard.
+ *
+ * It sits at the left of the header, ahead of the account controls, because it
+ * queries the whole library while everything to its right pertains to this
+ * user's own account. `flex: 1 1 auto` with a 26rem cap stops it stretching into
+ * a search bar across a 1920px screen: the spacer to its right absorbs the slack,
+ * so on a wide display it reads as a fixed-width field that happens to be
+ * left-aligned, and on a narrow one it shrinks before anything else does.
+ *
+ * 40px is the height at which a text field stops looking like a caption and
+ * starts looking like something you can type into. The background is
+ * `--colour-surface-sunken` rather than white-with-a-border: the header is
+ * already white, so separating the field from the bar would need a heavier
+ * outline than the border token carries, and a sunken surface gets the
+ * separation from tone alone.
+ */
+.topbar__search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1 1 auto;
+  min-width: 0;
+  /* 370px: wide enough that "The Design of Everyday Artifacts" reads as a search
+     for something, narrow enough that the bell and the profile keep their space
+     instead of being pushed to the far edge of a 1920px header. */
+  max-width: 23.125rem;
+}
+
+.topbar__search .icon {
+  position: absolute;
+  left: 0.75rem;
+  color: var(--colour-muted);
+  pointer-events: none;
+}
+
+.topbar__search input {
+  width: 100%;
+  height: 2.5rem;
+  padding: 0 3.5rem 0 2.4rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: var(--colour-surface-sunken);
+  color: var(--colour-text);
+  font: inherit;
+  font-size: 0.8125rem;
+}
+
+.topbar__search input::placeholder {
+  color: var(--colour-muted);
+}
+
+.topbar__search input:hover {
+  border-color: var(--colour-border);
+}
+
+.topbar__search input:focus-visible {
+  background: var(--colour-surface);
+  border-color: var(--colour-accent);
+}
+
+/*
+ * The shortcut hint only matters to an empty field. While there is text the
+ * browser's own clear affordance occupies the same corner, so the hint steps
+ * aside instead of stacking under it — pure CSS, because hiding it is a
+ * presentation concern and the key binding itself is always live.
+ */
+.topbar__search input:not(:placeholder-shown) ~ .kbd {
+  opacity: 0;
+}
+
+/* The shortcut hint is decorative on narrow widths and is stripped from the
+   accessibility tree, because `aria-keyshortcuts` on the input carries the same
+   fact for anyone who needs it programmatically. */
+.kbd {
+  position: absolute;
+  right: 0.45rem;
+  display: inline-flex;
+  gap: 1px;
+  pointer-events: none;
+}
+
+.kbd kbd {
+  min-width: 1.1rem;
+  padding: 0 0.25rem;
+  border: 1px solid var(--colour-border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--colour-surface);
+  color: var(--colour-muted);
+  font-family: inherit;
+  font-size: 0.625rem;
+  line-height: 1.35;
+  text-align: center;
+}
+
+/* The results list. Anchored to the field rather than to the header so it stays
+   put when the header wraps on a phone, and above the account controls so it is
+   never drawn underneath the bell. */
+.search-pop {
+  position: absolute;
+  top: calc(100% + 0.4rem);
+  left: 0;
+  right: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.25rem;
+  background: var(--colour-surface);
+  border: 1px solid var(--colour-border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-raised);
+  overflow: hidden;
+}
+
+.search-pop__item {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.45rem 0.5rem;
+  border-radius: var(--radius-xs);
+  color: var(--colour-text);
+  text-decoration: none;
+  font-size: 0.8125rem;
+}
+
+.search-pop__item:hover {
+  background: var(--colour-surface-sunken);
+}
+
+.search-pop__icon {
+  flex: 0 0 auto;
+  color: var(--tone-blue);
+}
+
+.search-pop__title {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.search-pop__meta {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+  color: var(--colour-muted);
+  font-size: 0.7rem;
+}
+
+.search-pop__note {
+  margin: 0;
+  padding: 0.55rem 0.5rem;
+  color: var(--colour-muted);
+  font-size: 0.75rem;
+}
+
+/* An icon-only control in the header. Square hit area, no chrome until hover —
+   a row of bordered buttons across the top of the screen reads as toolbar
+   clutter when four of them are just "bell" and "gear". */
+.icon-button {
+  display: inline-grid;
+  place-items: center;
+  width: 2.125rem;
+  height: 2.125rem;
+  flex: 0 0 auto;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--colour-muted);
+  cursor: pointer;
+  position: relative;
+}
+
+.icon-button:hover {
+  background: var(--colour-surface-sunken);
+  color: var(--colour-text);
+}
+
+.icon-button--bordered {
+  border-color: var(--colour-border);
+  background: var(--colour-surface);
+}
+
+.icon-button[aria-expanded='true'] {
+  background: var(--colour-surface-sunken);
+  color: var(--colour-text);
+}
+
+/* Unread count. A dot, not a numeral badge: a number here competes with the
+   statistics row for the reader's attention every time they pass the header. */
+.notice-dot {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.35rem;
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 50%;
+  background: var(--colour-accent);
+  box-shadow: 0 0 0 2px var(--colour-surface);
+}
+
+/* -- User area --------------------------------------------------------------- */
+
+.user-menu {
+  position: relative;
+  display: flex;
+}
+
+.user-menu__trigger {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.2rem 0.4rem 0.2rem 0.25rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.user-menu__trigger:hover {
+  background: var(--colour-surface-sunken);
+}
+
+.avatar {
+  display: grid;
+  width: 1.875rem;
+  height: 1.875rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--colour-accent-soft);
+  border: 1px solid color-mix(in srgb, var(--colour-accent) 26%, transparent);
+  color: var(--colour-accent);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.avatar--lg {
+  width: 2.5rem;
+  height: 2.5rem;
+  font-size: 0.8125rem;
+}
+
+.user-menu__copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1.25;
+}
+
+.user-menu__name {
+  max-width: 11rem;
+  overflow: hidden;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-menu__meta {
+  max-width: 11rem;
+  overflow: hidden;
+  color: var(--colour-muted);
+  font-size: 0.6875rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-menu__chevron {
+  color: var(--colour-muted);
+}
+
+/*
+ * The account dropdown.
+ *
+ * `<dialog>` rather than a positioned div: focus is trapped inside, Escape closes
+ * it, and clicking outside dismisses it — all behaviours a hand-rolled menu has to
+ * reimplement, usually incompletely.
+ */
+.account-menu {
+  border: 1px solid var(--colour-border);
+  border-radius: var(--radius);
+  background: var(--colour-surface);
+  color: var(--colour-text);
+  box-shadow: var(--shadow-raised);
+  padding: 0.35rem;
+  width: 14rem;
+  margin: 0;
+  inset: calc(100% + 0.4rem) 0 auto auto;
+  position: absolute;
+}
+
+.account-menu::backdrop {
+  background: transparent;
+}
+
+.account-menu__identity {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.55rem 0.5rem;
+  border-bottom: 1px solid var(--colour-border);
+  margin-bottom: 0.3rem;
+}
+
+.account-menu__name {
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.account-menu__meta {
+  color: var(--colour-muted);
+  font-size: 0.6875rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-menu__item {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  width: 100%;
+  padding: 0.45rem 0.5rem;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.8125rem;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.account-menu__item:hover {
+  background: var(--colour-surface-sunken);
+}
+
+.account-menu__item--danger {
+  color: var(--colour-bad);
+}
+
+.account-menu__item .icon {
+  flex: 0 0 auto;
+}
+
+.account-menu__item--danger .icon {
+  color: currentcolor;
+}
+
+.account-menu__divider {
+  height: 1px;
+  background: var(--colour-border);
+  margin: 0.3rem 0;
+}
+
+/* -- Sidebar furniture ------------------------------------------------------- */
+
+/*
+ * The brand block is centred. A left-aligned brand next to left-aligned
+ * navigation reads as two unrelated columns; centring it makes the logo a header
+ * for the whole panel rather than the first item in a list.
+ */
+/*
+ * Left-aligned, no rule beneath it.
+ *
+ * This block used to centre itself and draw a hairline under the logo, which
+ * suited a white panel where the mark was competing with everything below it.
+ * On navy the logo, the wordmark and the tagline are already a self-contained
+ * header — a border would cut them off from the navigation rather than organise
+ * anything — and a centred mark above a left-aligned list reads as belonging to
+ * neither. The collapse button returns to the right edge, where a control on a
+ * panel belongs.
+ */
+.sidebar__brand {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-height: 2.75rem;
+  padding: 0 0.2rem;
+}
+
+.sidebar__brand > a {
+  display: flex;
+  min-width: 0;
+  text-decoration: none;
+  color: inherit;
+}
+
+.sidebar__collapse {
+  color: var(--colour-sidebar-muted);
+  font-size: 1.05rem;
+}
+
+/* Profile and sign-out pinned to the bottom of the panel. */
+.sidebar__foot {
+  flex: 0 0 auto;
+  border-top: 1px solid rgb(255 255 255 / 12%);
+  padding-top: 0.55rem;
+  margin-top: 0.4rem;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.sidebar__foot-label {
+  color: var(--colour-sidebar-muted);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 0 var(--space);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+/*
+ * The encouragement card. Raised rather than flat, so it reads as a note pinned
+ * to the bottom of the panel instead of a caption on the navigation — and
+ * wrapped, because white-space: nowrap here would clip a sentence whose whole
+ * purpose is to be read in full.
+ */
+.sidebar__foot-note {
+  background: rgb(255 255 255 / 8%);
+  border: 1px solid rgb(255 255 255 / 10%);
+  border-radius: var(--radius-sm);
+  color: var(--sidebar-fg);
+  font-size: 0.75rem;
+  line-height: 1.45;
+  padding: 0.55rem 0.65rem;
+}
+
+/* -- Dashboard --------------------------------------------------------------- */
+
+.dash {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: none;
+  /* 20px between the two column-pair and the footer — the largest step in the
+     4 / 8 / 12 / 16 / 20 scale, and the only place it is used. */
+  gap: 1.25rem;
+}
+
+/*
+ * Main beside rail, at roughly 70/30.
+ *
+ * The greeting, the figures and the closing banner all sit *inside* `.dash-main`,
+ * which is what makes this a composition rather than three stacked rows: the rail
+ * starts level with the page's first line and runs beside everything, so the
+ * reader sees one pair of columns rather than a full-width band with a column
+ * hanging off its right. The old arrangement put the head above the split and
+ * read as flat because it was.
+ *
+ * `16.5rem` is a rail, not a second main column: wide enough for a calendar day
+ * and a due-date chip, narrow enough that the shelf beside it keeps about 70%.
+ *
+ * `minmax(0, 1fr)` on the first track is load-bearing: without it a long
+ * unbroken ISBN in a book card refuses to shrink and pushes the rail off-screen.
+ */
+.dash-body {
+  display: grid;
+  width: 100%;
+  grid-template-columns: minmax(0, 1fr) 16.5rem;
+  gap: 1rem;
+  align-items: start;
+}
+
+.dash-main,
+.dash-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
+}
+
+/*
+ * Performance beside recent circulation. These two are summaries of things that
+ * already happened and read well side by side; stretched rather than top-aligned
+ * so the pair shares one bottom edge instead of leaving a step under the shorter
+ * card. `.dash-panel--performance` carries the row's floor, because the activity
+ * feed is frequently an empty state and the pair should not collapse to it.
+ */
+.dash-duo {
+  display: grid;
+  width: 100%;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1rem;
+}
+
+/*
+ * Every dashboard panel. Panels sit in grid cells whose rows are as tall as their
+ * tallest sibling, so each stretches to fill its cell — otherwise a short card
+ * leaves a gap below its border and the row reads as unfinished.
+ *
+ * Each panel is tinted by the subject it reports on, blended down into plain
+ * surface rather than laid on as a flat fill. The tint is 7% of `--panel-tint`
+ * (blue unless a modifier class says otherwise) over the surface, fading out by
+ * 42% of the card's height: that lands the header on `rgb(238,241,251)` and puts
+ * every line of body copy on white, so the colour reads as the card's edge rather
+ * than as a background the text has to fight. It is the same hue the panel's
+ * icons and figures already use, so a panel announces its subject twice — once
+ * through what it says and once through what it is wearing.
+ */
+.dash-panel {
+  --panel-tint: var(--tone-blue);
+
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--panel-tint) 7%, var(--colour-surface)) 0%,
+    var(--colour-surface) 42%
+  );
+}
+
+/*
+ * The "some figures could not be loaded" banner. A warning, not an error: the page
+ * is still usable, and the panels that did resolve are still true.
+ */
+.dash__notice {
+  padding: 0.6rem 0.8rem;
+  border: 1px solid color-mix(in srgb, var(--colour-warn) 35%, transparent);
+  border-radius: var(--radius-sm);
+  background: var(--colour-warn-soft);
+  color: var(--colour-warn);
+  font-size: 0.8125rem;
+}
+
+/* -- Welcome banner ---------------------------------------------------------- */
+
+.welcome {
+  display: grid;
+  width: 100%;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 1rem;
+  /* 136px: inside the 135–145px band the layout calls for, and tall enough that
+     the greeting, the summary line and the branch aside read as one block rather
+     than as three stacked fragments. */
+  min-height: 8.5rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid color-mix(in srgb, var(--colour-accent) 16%, var(--colour-border));
+  border-radius: var(--radius);
+  /*
+   * Blue into violet, on the diagonal the greeting reads along.
+   *
+   * Two token-derived stops rather than a stack of radials: the blue gathers at the
+   * top-left behind the eyebrow, violet takes the middle where the summary line
+   * runs, and the banner settles back to plain `--colour-welcome` beneath the
+   * illustration on the right, so the artwork is never sitting on its own tint. Ten and seven per cent are the
+   * ceilings — on the light theme's `#f4f8ff` that keeps the strongest stop at
+   * `rgb(223,233,253)`, so `--colour-accent-strong` still clears 10:1 — and both
+   * are tokens, so the dark theme blends the same two hues into `#121e33` instead
+   * of painting a light patch across a near-black banner.
+   */
+  background:
+    linear-gradient(
+      115deg,
+      color-mix(in srgb, var(--tone-blue) 10%, var(--colour-welcome)) 0%,
+      color-mix(in srgb, var(--tone-purple) 7%, var(--colour-welcome)) 52%,
+      var(--colour-welcome) 100%
+    ),
+    var(--colour-welcome);
+  overflow: hidden;
+}
+
+.welcome__body-copy {
+  min-width: 0;
+}
+
+.welcome__eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--colour-muted);
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.welcome__title {
+  margin-top: 0.15rem;
+  font-size: 1.375rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--colour-text-strong);
+  line-height: 1.2;
+}
+
+.welcome__body {
+  margin-top: 0.2rem;
+  color: var(--colour-muted);
+  font-size: 0.8125rem;
+}
+
+.welcome__aside {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.7rem;
+}
+
+/*
+ * The branch block reads label-over-value, so the aside is a column. Left as a row
+ * the label and the branch name sit side by side, which makes the branch look like
+ * a second label rather than the answer to the first.
+ */
+.welcome__aside-label {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--colour-muted);
+}
+
+.welcome__aside-value {
+  font-weight: 600;
+  color: var(--colour-text-strong);
+}
+
+/*
+ * The illustration.
+ *
+ * Right-aligned and deliberately small — a marker in the corner rather than a
+ * panel of its own. The banner's job is to say who is being greeted and what the
+ * library looks like today, so the artwork sits back at 6.5rem and the greeting
+ * keeps the whole left side. `flex: 0 0 auto` matters — without it a grid track
+ * would stretch the artwork beyond its compact size.
+ */
+.welcome__art {
+  display: block;
+  width: 6.5rem;
+  height: 4.5rem;
+  object-fit: contain;
+  flex: 0 0 auto;
+}
+
+.library-art {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+/* -- Statistic cards --------------------------------------------------------- */
+
+/*
+ * Four or five cards, sized from the container rather than counted.
+ *
+ * `auto-fit` here because the card count is not a single number: staff always
+ * bring five, but a member's row is four until the hold and fine panels resolve,
+ * at which point it is six — and a row of four laid into five explicit tracks
+ * leaves a sixth of it visibly empty. `auto-fit` collapses the tracks nothing
+ * landed in, so the row always reads as the set that exists.
+ *
+ * The floor of 8.25rem plus a 0.5rem gap is what five cards need to share the main
+ * column without the label column dropping under ~90px: at 1440px each card is
+ * 162px, and below 77.5rem the count of tracks falls below five, so the row steps
+ * down to three rather than wrapping a single card onto a line of its own.
+ */
+.stat-row {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(8.25rem, 1fr));
+}
+
+/*
+ * Six cards cannot share five tracks. Three across, twice, is the deliberate
+ * reflow — a sixth card alone on a second row reads as an error, while 3+3 reads
+ * as a second rank of figures. Only past 86rem is there enough main column to
+ * give each of the six a comfortable width on one row.
+ */
+.stat-row--six {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+@media (min-width: 86rem) {
+  .stat-row--six {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 77.5rem) {
+  .stat-row {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.stat-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas:
+    'icon label'
+    'icon value'
+    'icon hint';
+  column-gap: 0.7rem;
+  align-items: center;
+  padding: 0.85rem 0.9rem;
+  /*
+   * The category colour, blended rather than flat.
+   *
+   * A diagonal from a 10% wash of the card's own tone into plain surface. Ten per
+   * cent is the ceiling: at that strength blue lands on `rgb(232,236,251)` and red
+   * on `rgb(249,233,233)`, both of which keep `--colour-text-strong` above 15:1,
+   * so the figure in the corner still reads as black type on a near-white card and
+   * the row keeps five *different* cards rather than five differently-coloured
+   * blocks. The gradient runs away from the icon, so the tinted box stays the
+   * strongest mark on the card instead of dissolving into the surface behind it.
+   */
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--tone, var(--tone-blue)) 10%, var(--colour-surface)) 0%,
+    var(--colour-surface) 62%
+  );
+  border: 1px solid var(--colour-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  min-width: 0;
+  /*
+   * A stat card is an `<a>` when the figure has a page behind it, so the UA
+   * defaults apply unless they are cancelled: link-blue text and an underline
+   * across the label, the figure and the hint. The card already reads as a
+   * button through its surface, border and shadow, so the link styling has to
+   * come off or the row of figures renders as five underlined hyperlinks.
+   */
+  color: var(--colour-text);
+  text-decoration: none;
+  /*
+   * 96px: the 90–105px band the row is sized to.
+   *
+   * The three rows only add up to ~79px on their own, so without a floor the row
+   * sits under the height every other dashboard element is cut to and the figures
+   * read as a caption rather than as cards. The spare space is spread across the
+   * rows by `align-content: stretch`, so the label, the number and the hint keep
+   * their rhythm instead of bunching at the top with a hole beneath them.
+   */
+  min-height: 6rem;
+}
+
+/* The label and hint are explicitly muted, so `color` above only reaches the
+   value — which is the point: the figure carries the card's text colour. */
+.stat-card:hover {
+  border-color: var(--colour-muted);
+}
+
+.stat-card:focus-visible {
+  outline: 2px solid var(--colour-accent);
+  outline-offset: 2px;
+}
+
+/*
+ * The icon box.
+ *
+ * A bordered rounded square with the category colour on a wash of the same hue —
+ * the application's one recurring device for "this figure is about X". `--tone`,
+ * `--tone-soft` and `--tone-line` are read from the card, so a tone modifier class
+ * sets three properties and everything here follows. The outline is the tone's own
+ * line rather than a translucent tint of the glyph: over a wash, a 22%-opacity
+ * version of the same hue is barely distinguishable from the wash itself.
+ */
+.stat-card__icon {
+  grid-area: icon;
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: var(--radius-sm);
+  /*
+   * The wash, blended with ten per cent of the tone itself in the top-left corner.
+   * The glyph is the only thing on the card wearing the tone at full strength, so
+   * giving its box a gradient of the same hue makes the pair read as one piece of
+   * colour rather than as a flat chip with a mark in it. Ten per cent keeps the
+   * darkest corner of even the red box above 3:1 against its glyph, which is the
+   * line a 16px graphic has to clear.
+   */
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--tone, var(--tone-blue)) 10%, var(--tone-soft, var(--tone-blue-soft)))
+      0%,
+    var(--tone-soft, var(--tone-blue-soft)) 78%
+  );
+  border: 1px solid var(--tone-line, var(--tone-blue-line));
+  color: var(--tone, var(--tone-blue));
+}
+
+.stat-card__label {
+  grid-area: label;
+  color: var(--colour-muted);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  /*
+   * Wraps rather than truncates. With six cards across a laptop viewport the
+   * label column is around 104px, which "AVAILABLE COPIES" does not fit — and an
+   * ellipsised label is worse than a tall card, because the label is the only
+   * thing saying which figure the number beside it refers to. The cards in the
+   * row stretch to the tallest, so one two-line label costs a few pixels of row
+   * height rather than breaking the alignment.
+   */
+  line-height: 1.25;
+  overflow-wrap: break-word;
+  hyphens: auto;
+}
+
+.stat-card__value {
+  grid-area: value;
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  line-height: 1.15;
+  color: var(--colour-text-strong);
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-card__hint {
+  grid-area: hint;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--colour-muted);
+  font-size: 0.71875rem;
+  min-width: 0;
+}
+
+.stat-card__hint--ok {
+  color: var(--colour-ok);
+}
+
+.stat-card__hint--bad {
+  color: var(--colour-bad);
+}
+
+.stat-card__hint span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * Stat card tones.
+ *
+ * `.stat-card__icon` reads `--tone` / `--tone-soft`, so a tone class only has to set
+ * those two properties — the icon inherits them. Previously nothing set them, which
+ * meant every card fell back to the accent green: an overdue count and a healthy one
+ * were drawn identically, and the `tone` field the assembler computed was inert.
+ */
+.stat-card--blue {
+  --stat-card-fill: #1d4ed8;
+  --tone: var(--tone-blue);
+  --tone-soft: var(--tone-blue-soft);
+  --tone-line: var(--tone-blue-line);
+}
+
+.stat-card--purple {
+  --stat-card-fill: #7e22ce;
+  --tone: var(--tone-purple);
+  --tone-soft: var(--tone-purple-soft);
+  --tone-line: var(--tone-purple-line);
+}
+
+.stat-card--red {
+  --stat-card-fill: #b91c1c;
+  --tone: var(--tone-red);
+  --tone-soft: var(--tone-red-soft);
+  --tone-line: var(--tone-red-line);
+}
+
+.stat-card--green {
+  --stat-card-fill: #15803d;
+  --tone: var(--tone-green);
+  --tone-soft: var(--tone-green-soft);
+  --tone-line: var(--tone-green-line);
+}
+
+.stat-card--orange {
+  --stat-card-fill: #c2410c;
+  --tone: var(--tone-orange);
+  --tone-soft: var(--tone-orange-soft);
+  --tone-line: var(--tone-orange-line);
+}
+
+.stat-card--yellow {
+  --stat-card-fill: #a16207;
+  --tone: var(--tone-yellow);
+  --tone-soft: var(--tone-yellow-soft);
+  --tone-line: var(--tone-yellow-line);
+}
+
+.stat-card--pink {
+  --stat-card-fill: #be185d;
+  --tone: var(--tone-pink);
+  --tone-soft: var(--tone-pink-soft);
+  --tone-line: var(--tone-pink-line);
+}
+
+.stat-card--slate {
+  --stat-card-fill: #475569;
+  --tone: var(--tone-slate);
+  --tone-soft: var(--tone-slate-soft);
+  --tone-line: var(--tone-slate-line);
+}
+
+/* Fallbacks for a figure with no explicit category. Blue, not green: the accent
+   is the one hue a reader already associates with "this is the standard card". */
+.stat-card--neutral {
+  --tone: var(--tone-blue);
+  --tone-soft: var(--tone-blue-soft);
+  --tone-line: var(--tone-blue-line);
+}
+
+/*
+ * Status no longer repaints the card's edge.
+ *
+ * `.stat-card--good` and `.stat-card--warning` used to swap the border for a
+ * saturated green or amber, which turned a row of five white cards into a row of
+ * white cards with two of them outlined — the strongest thing on the screen was
+ * a status nobody had asked about, and a healthy overdue count of zero wore the
+ * same red border as a crisis. The category survives where it carries
+ * information, in the tinted icon box; the surface stays white with the same
+ * hairline as its neighbours, so colour is an accent rather than the structure.
+ *
+ * The modifier classes are still emitted — the assembler computes `tone` for
+ * every figure and other surfaces read it — they simply have no edge to set here.
+ */
+
+/*
+ * No solid-fill variant.
+ *
+ * These cards used to be painted edge-to-edge in their category colour with white
+ * type, which made a row of five figures into a row of five buttons: the accent
+ * and the statuses stopped meaning anything when everything was loud, and the
+ * figures themselves lost the tabular-numeral contrast against white that makes
+ * a column of numbers scannable. The category survives where it carries
+ * information — the tinted icon box above — and the card surface stays white, so
+ * an overdue count reads as red *because* of its icon rather than because the
+ * whole tile is red.
+ */
+
+/* -- New arrivals ------------------------------------------------------------ */
+
+/*
+ * A shelf of book cards, not a list of notices — and a grid, not a single row.
+ *
+ * The old layout rendered new arrivals as the same `.notice` rows the notice
+ * board uses — an icon, a line of text, a date — which is the right shape for an
+ * announcement and the wrong one for a book. A catalogue entry has a cover, a
+ * title, an author and a year; compressing that to a single line throws away the
+ * only visual cue a reader has for "I've seen that one".
+ *
+ * Two across by default, three once the main column can afford it: two rows of
+ * three at 1440px, two of two on a laptop, each card still holding a readable
+ * cover beside its copy. The counts are explicit for the same reason the stat
+ * row's are — `auto-fill` answers "how many fit", not "how many look right", and
+ * at some widths it fits seven cards at 120px with the title clamped to a stub.
+ * The threshold at 78rem is where the main column passes ~700px, which is the
+ * point at which three cards of 228px stop competing with each other.
+ */
+.book-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+/* Below 78rem the rail is still beside the main column, so it stays at two.
+   Past it there is room for three; and once the rail drops below 64rem the whole
+   window is the main column, so three applies there too — then back to two as
+   the viewport narrows, and one below 30rem where a single card may as well have
+   the row. */
+@media (min-width: 78rem) {
+  .book-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 64rem) {
+  .book-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 48rem) {
+  .book-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 30rem) {
+  .book-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/*
+ * Cover beside copy, not above it.
+ *
+ * Stacked, a card holding a 2:3 cover and two lines of title runs past 200px
+ * tall — twice the band this row is sized for — and the shelf stops being
+ * scannable. Side by side the cover drives the height at 84px plus padding,
+ * which lands the card inside 100–125px, and the reader gets the one thing a
+ * horizontal card buys: four covers and four titles visible at once, in the
+ * order the eye already moves.
+ */
+.book-card {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+  padding: 0.55rem;
+  border: 1px solid var(--colour-border);
+  border-radius: var(--radius-sm);
+  /*
+   * The faintest of the blends: five per cent of the shelf blue gathering in the
+   * bottom-right corner, so the card reads as a sheet of paper with the panel's
+   * colour behind it rather than as a white rectangle punched out of a tinted one.
+   * The hover below deepens the same corner, which is where a reader's eye already
+   * is — the card lifts its colour toward them instead of only gaining a shadow.
+   */
+  background: linear-gradient(
+    150deg,
+    var(--colour-surface) 0%,
+    color-mix(in srgb, var(--tone-blue) 5%, var(--colour-surface)) 100%
+  );
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease,
+    background 140ms ease;
+}
+
+.book-card:hover {
+  border-color: var(--colour-border-strong);
+  box-shadow: var(--shadow);
+  background: linear-gradient(
+    150deg,
+    var(--colour-surface) 0%,
+    color-mix(in srgb, var(--tone-blue) 10%, var(--colour-surface)) 100%
+  );
+}
+
+/*
+ * A fixed 52×72 box with `object-fit: cover` rather than the image's own
+ * proportions: covers arrive at every ratio the publisher felt like using, and
+ * normalising them is what turns that inconsistency into a shelf. `object-position`
+ * anchors to the top because a cover's title usually is.
+ *
+ * The height is what sets the section's: at 72px the card lands at ~92px, two
+ * rows plus the header and body padding sit at ~254px, and the shelf holds the
+ * 220–260px band without the covers turning into stamps.
+ */
+.book-card__cover {
+  display: block;
+  width: 3.25rem;
+  height: 4.5rem;
+  flex: 0 0 auto;
+  object-fit: cover;
+  object-position: center top;
+  border-radius: var(--radius-xs);
+  background: var(--colour-surface-sunken);
+}
+
+/*
+ * The no-cover case is a tinted glyph rather than an empty rectangle: most
+ * records in a catalogue have no cover file, and a column of empty boxes reads
+ * as a loading failure.
+ */
+.book-card__cover--empty {
+  display: grid;
+  place-items: center;
+  color: var(--tone-blue);
+  /* A blue→violet blend rather than a flat soft blue: with no cover art the box
+     is the only thing in the row carrying colour, and two stops of it read as a
+     spine catching the light rather than as a missing image. */
+  background: linear-gradient(
+    150deg,
+    var(--tone-blue-soft) 0%,
+    color-mix(in srgb, var(--tone-purple) 16%, var(--tone-blue-soft)) 100%
+  );
+  border: 1px solid var(--tone-blue-line);
+}
+
+.book-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.book-card__title {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.3;
+  /*
+   * Two lines, then an ellipsis. A catalogue title is the one field that is
+   * routinely longer than its box — and truncating it is safe precisely because
+   * the whole card is one link to the full record, so nothing is lost by the cut.
+   */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.book-card__author {
+  margin: 0;
+  color: var(--colour-muted);
+  font-size: 0.71875rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.book-card__meta {
+  margin: 0;
+  color: var(--colour-muted);
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* -- Notice board ------------------------------------------------------------ */
+
+.notices {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.notice {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.65rem;
+  padding: 0.7rem 0.25rem;
+  border-bottom: 1px solid var(--colour-border);
+}
+
+.notices > .notice:last-child {
+  border-bottom: 0;
+  padding-bottom: 0.1rem;
+}
+
+.notices > .notice:first-child {
+  padding-top: 0.1rem;
+}
+
+/*
+ * The same blended wash the stat and quick-action icon boxes wear, so the three
+ * places a tone is shown as a small square agree with each other. The tone and
+ * its soft are carried as custom properties rather than as a `background` on each
+ * modifier, because the background has to mix the two together and a modifier
+ * that only sets one would drop the blend back to a flat chip.
+ */
+.notice__icon {
+  --notice-tone: var(--tone-blue);
+  --notice-soft: var(--tone-blue-soft);
+
+  display: grid;
+  place-items: center;
+  width: 1.875rem;
+  height: 1.875rem;
+  flex: 0 0 auto;
+  border-radius: var(--radius-xs);
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--notice-tone) 10%, var(--notice-soft)) 0%,
+    var(--notice-soft) 78%
+  );
+}
+
+.notice__icon--red {
+  --notice-tone: var(--tone-red);
+  --notice-soft: var(--tone-red-soft);
+}
+
+.notice__icon--orange {
+  --notice-tone: var(--tone-orange);
+  --notice-soft: var(--tone-orange-soft);
+}
+
+.notice__icon--pink {
+  --notice-tone: var(--tone-pink);
+  --notice-soft: var(--tone-pink-soft);
+}
+
+.notice__title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.notice__body {
+  margin-top: 0.1rem;
+  color: var(--colour-muted);
+  font-size: 0.75rem;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.notice__date {
+  margin-top: 0.25rem;
+  color: var(--colour-muted);
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* -- Upcoming due dates ------------------------------------------------------ */
+
+/*
+ * The rail's answer to "what do I have to bring back".
+ *
+ * Deliberately tighter than `.notice` rows: this list sits in a 17.5rem column
+ * beside the calendar, so every row is one line of title, one line of date and a
+ * chip that carries the urgency. The chip's text already says the whole thing —
+ * "3 days overdue" — so colour is the second signal, never the only one.
+ */
+.due-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.due-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--colour-border);
+}
+
+.due-row:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.due-row:first-child {
+  padding-top: 0;
+}
+
+/*
+ * The calendar glyph is a category marker, not a state: it says "this row is a
+ * date", which the chip then qualifies. Sits in a small sunken box so it holds a
+ * stable column width when a long title wraps beside it.
+ */
+.due-row__icon {
+  display: grid;
+  place-items: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: var(--radius-xs);
+  background: var(--colour-surface-sunken);
+  color: var(--colour-muted);
+}
+
+.due-row__body {
+  min-width: 0;
+}
+
+.due-row__title {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.due-row__date {
+  margin: 0.1rem 0 0;
+  color: var(--colour-muted);
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.due-row__chip {
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  font-size: 0.65625rem;
+  font-weight: 700;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.due-row__chip--late {
+  background: var(--colour-bad-soft);
+  color: var(--colour-bad);
+}
+
+.due-row__chip--today {
+  background: var(--colour-warn-soft);
+  color: var(--colour-warn);
+}
+
+.due-row__chip--soon {
+  background: var(--colour-surface-sunken);
+  color: var(--colour-muted);
+}
+
+/* -- Calendar ---------------------------------------------------------------- */
+
+.calendar {
+  padding: 0.25rem 0.15rem 0;
+}
+
+/*
+ * Month navigation, placed in the card's action slot so the month name in the
+ * description line is the only text competing with it. Two icon buttons rather
+ * than a native `<select>`: a dropdown of twelve months is a menu for choosing a
+ * jump, and these arrows are a control for stepping — a reader scanning "what is
+ * due next week" moves one month at a time.
+ */
+.calendar__nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+.calendar__nav-button {
+  width: 1.75rem;
+  height: 1.75rem;
+}
+
+/* Out of range, the step stops rather than silently doing nothing. */
+.calendar__nav-button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.calendar__weekdays,
+.calendar__grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.calendar__weekday {
+  padding: 0.35rem 0;
+  color: var(--colour-muted);
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.calendar__day {
+  position: relative;
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  min-height: 1.875rem;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--colour-text);
+  font: inherit;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.calendar__day:hover:not(:disabled) {
+  background: var(--colour-surface-sunken);
+}
+
+.calendar__day--empty {
+  cursor: default;
+  visibility: hidden;
+}
+
+/*
+ * Today: a filled accent circle. Filled rather than outlined because it is the one
+ * day the reader is looking for, and an outline ring competes with the day-number
+ * glyph inside it at this size. Accent, not pink — pink is the due-date category,
+ * so a pink today reads as "today is overdue" before the reader has parsed the
+ * legend.
+ */
+.calendar__day--today {
+  background: var(--colour-accent);
+  color: var(--colour-accent-contrast);
+  font-weight: 700;
+}
+
+/*
+ * A marked day gets a dot, not a tint. Six tinted cells would make the calendar
+ * read as a heat map, and a librarian's question is "which days have something on
+ * them", not "how much".
+ *
+ * Two dots per cell would be truer still and worse to read: at this size a day
+ * holding both a due date and a ready hold would need two 4px marks wedged into the
+ * bottom edge. The component resolves each day to one mark — a hold wins over a due
+ * date, because a hold waiting for collection is the one that expires — and the day
+ * button's accessible name and `title` still list every mark on it.
+ */
+.calendar__day--due::after,
+.calendar__day--ready::after {
+  content: '';
+  position: absolute;
+  bottom: 0.15rem;
+  width: 0.25rem;
+  height: 0.25rem;
+  border-radius: 50%;
+}
+
+/* Due dates follow the pink calendar category; a hold ready for pickup follows the
+   orange reservation category. */
+.calendar__day--due::after {
+  background: var(--tone-pink);
+}
+
+.calendar__day--ready::after {
+  background: var(--tone-orange);
+}
+
+/* A dot on today's filled circle would be invisible against that fill, so on the
+   today cell it is drawn in the circle's own contrast colour instead. */
+.calendar__day--today::after {
+  background: currentcolor;
+}
+
+.calendar__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding: 0.6rem 0.25rem 0;
+  margin-top: 0.35rem;
+  border-top: 1px solid var(--colour-border);
+}
+
+.calendar__legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: var(--colour-muted);
+  font-size: 0.6875rem;
+}
+
+.calendar__swatch {
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 50%;
+}
+
+/* Each swatch is the exact colour of the cell it explains — a legend that
+   approximates its own marks is worse than none. */
+.calendar__swatch--due {
+  background: var(--tone-pink);
+}
+
+.calendar__swatch--ready {
+  background: var(--tone-orange);
+}
+
+.calendar__swatch--today {
+  background: var(--colour-accent);
+}
+
+/* -- Quick access ------------------------------------------------------------ */
+
+.quick-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+/*
+ * A quick-access tile is a shortcut, so it is drawn like one: a bordered surface
+ * that lifts slightly on hover. The label sits under the icon rather than beside
+ * it because the tiles are in a 3-column grid — a horizontal layout would put the
+ * icon at three different optical positions depending on label length.
+ */
+.quick-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.45rem;
+  padding: 0.7rem 0.65rem;
+  border: 1px solid var(--colour-border);
+  border-radius: var(--radius-sm);
+  /*
+   * The tile's own tone, blended across the surface — the same 7%→0 move the stat
+   * cards make, angled so the colour gathers behind the icon in the top-left and
+   * clears before it reaches the label. Four tinted icons in a row would otherwise
+   * be the only colour in the panel; carrying a trace of each onto its tile makes
+   * the four read as four things rather than as one grid with decorations.
+   */
+  background: linear-gradient(
+    140deg,
+    color-mix(in srgb, var(--tone, var(--tone-blue)) 7%, var(--colour-surface)) 0%,
+    var(--colour-surface) 65%
+  );
+  color: var(--colour-text);
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    border-color 130ms ease,
+    box-shadow 130ms ease,
+    transform 130ms ease;
+}
+
+.quick-tile:hover {
+  border-color: color-mix(in srgb, var(--colour-accent) 45%, var(--colour-border));
+  box-shadow: var(--shadow);
+  transform: translateY(-1px);
+}
+
+.quick-tile:focus-visible {
+  outline: 2px solid var(--colour-accent);
+  outline-offset: 2px;
+}
+
+.quick-tile__icon {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  /* Inherits the same tone triple as a stat card, so a tile and a card showing
+     the same subject wear the same colour without either having to name it — and
+     the same blend, so the icon boxes match rather than one being flat. */
+  border: 1px solid var(--tone-line, var(--tone-blue-line));
+  border-radius: var(--radius-xs);
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--tone, var(--tone-blue)) 10%, var(--tone-soft, var(--tone-blue-soft)))
+      0%,
+    var(--tone-soft, var(--tone-blue-soft)) 78%
+  );
+  color: var(--tone, var(--tone-blue));
+}
+
+.quick-tile__label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.quick-tile--blue {
+  --tone: var(--tone-blue);
+  --tone-soft: var(--tone-blue-soft);
+  --tone-line: var(--tone-blue-line);
+}
+
+.quick-tile--purple {
+  --tone: var(--tone-purple);
+  --tone-soft: var(--tone-purple-soft);
+  --tone-line: var(--tone-purple-line);
+}
+
+.quick-tile--red {
+  --tone: var(--tone-red);
+  --tone-soft: var(--tone-red-soft);
+  --tone-line: var(--tone-red-line);
+}
+
+.quick-tile--green {
+  --tone: var(--tone-green);
+  --tone-soft: var(--tone-green-soft);
+  --tone-line: var(--tone-green-line);
+}
+
+.quick-tile--orange {
+  --tone: var(--tone-orange);
+  --tone-soft: var(--tone-orange-soft);
+  --tone-line: var(--tone-orange-line);
+}
+
+.quick-tile--yellow {
+  --tone: var(--tone-yellow);
+  --tone-soft: var(--tone-yellow-soft);
+  --tone-line: var(--tone-yellow-line);
+}
+
+.quick-tile--pink {
+  --tone: var(--tone-pink);
+  --tone-soft: var(--tone-pink-soft);
+  --tone-line: var(--tone-pink-line);
+}
+
+.quick-tile--slate {
+  --tone: var(--tone-slate);
+  --tone-soft: var(--tone-slate-soft);
+  --tone-line: var(--tone-slate-line);
+}
+
+/* -- Borrowing performance --------------------------------------------------- */
+
+/*
+ * Two rates and four figures: the member-side counterpart to the staff donut.
+ *
+ * A horizontal track rather than a second donut. A ring is a good answer to "what
+ * proportion of the shelf is where" because the segments are few and comparable;
+ * it is a poor answer to "what percentage of your returns were on time" twice
+ * over, because the reader has to estimate the arc instead of reading a bar's
+ * length — and two small rings side by side are two small rings.
+ */
+.bars {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.bar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.bar__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.bar__label {
+  font-size: 0.78125rem;
+  font-weight: 600;
+  color: var(--colour-text);
+}
+
+.bar__value {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--colour-text-strong);
+}
+
+/*
+ * The empty state is a sentence under the label rather than a track sitting at
+ * zero. A bar at 0% says "you scored nothing", which is a different claim from
+ * "there is nothing to score yet" — and the second is the true one on a new
+ * account.
+ */
+.bar__empty {
+  margin: 0;
+  color: var(--colour-muted);
+  font-size: 0.75rem;
+}
+
+.bar__track {
+  height: 0.5rem;
+  border-radius: 999px;
+  background: var(--colour-surface-sunken);
+  overflow: hidden;
+}
+
+.bar__fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--colour-accent);
+}
+
+/*
+ * The four figures under the rates, as a 2×2 grid rather than a row of four.
+ * At the rail-free width this card occupies in `.dash-duo`, four across would put
+ * "Current Loans" at roughly 70px and wrap it to two lines; two columns gives
+ * each label room and keeps the block's height predictable between breakpoints.
+ */
+.bar-figures {
+  list-style: none;
+  margin: 1.1rem 0 0;
+  padding: 0.9rem 0 0;
+  border-top: 1px solid var(--colour-border);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+
+.bar-figures__item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.bar-figures__label {
+  color: var(--colour-muted);
+  font-size: 0.6875rem;
+  line-height: 1.3;
+}
+
+.bar-figures__value {
+  font-size: 1.125rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--colour-text-strong);
+}
+
+/* -- Performance donut ------------------------------------------------------- */
+
+/*
+ * The panel spans the full content width, and a 7rem ring beside two short metric
+ * lines leaves most of it empty. The ring keeps its size and the metrics take the
+ * slack instead, which is why the row is a grid with a fixed first track rather than
+ * a centred flex pair.
+ */
+.performance {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.donut {
+  position: relative;
+  flex: 0 0 auto;
+  width: 8rem;
+  height: 8rem;
+}
+
+.donut__svg {
+  display: block;
+  /*
+   * Sized to its wrapper. The element carries a `viewBox` but no width/height
+   * attributes, so with no CSS size it takes its width from the flex container
+   * and its height from the 1:1 viewBox ratio — a 7rem ring stretched to over a
+   * thousand pixels wide, which is what the panel was doing.
+   *
+   * No `rotate(-90deg)` here: each segment already carries its own
+   * `rotate(... 70 70)`, and the first is offset by -90 so the ring begins at
+   * twelve o'clock. Rotating the whole SVG again moved the start to nine
+   * o'clock and turned anything drawn inside it on its side.
+   */
+  width: 100%;
+  height: 100%;
+}
+
+.donut__track {
+  stroke: var(--colour-surface-sunken);
+}
+
+/* The ring's own stroke, so every segment keeps the 16px weight the viewBox was
+   drawn at rather than inheriting whatever a `stroke-width` attribute defaults
+   to in a given browser. */
+.donut__svg circle:not(.donut__track) {
+  stroke-width: 16;
+}
+
+.donut__centre {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 0.1rem;
+  text-align: center;
+}
+
+.donut__value {
+  font-size: 1.375rem;
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  line-height: 1;
+  color: var(--colour-text-strong);
+  font-variant-numeric: tabular-nums;
+}
+
+.donut__caption {
+  color: var(--colour-muted);
+  font-size: 0.625rem;
+  line-height: 1.25;
+  max-width: 4.5rem;
+}
+
+/*
+ * The four figures the ring is read against — available, borrowed, overdue and
+ * the availability share itself — as a list rather than as tiles.
+ *
+ * `label  value` on one line with a hairline beneath: four of those come to about
+ * 100px, which is what lets the whole card hold its 200–230px band beside the
+ * activity feed. Drawn as figure tiles instead — a bordered box per number, label
+ * stacked over value — the same four lines ran past 200px on their own and the
+ * card stretched beyond 300 with a hole in the middle of it.
+ */
+.performance__metrics {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.performance__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--colour-border);
+}
+
+.performance__row:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.performance__row:first-child {
+  padding-top: 0;
+}
+
+.performance__label {
+  color: var(--colour-muted);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+.performance__value {
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  font-variant-numeric: tabular-nums;
+  color: var(--colour-text-strong);
+}
+
+/* -- Circulation rows -------------------------------------------------------- */
+
+/*
+ * A person cell is a name plus a secondary line. Packing the membership number
+ * into the same cell keeps the table at five columns without losing the
+ * identifier a librarian needs to read a number aloud over the desk phone.
+ */
+.person {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.person__avatar {
+  display: grid;
+  width: 1.75rem;
+  height: 1.75rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--colour-surface-sunken);
+  color: var(--colour-muted);
+  font-size: 0.625rem;
+  font-weight: 700;
+}
+
+.person__name {
+  font-weight: 500;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.person__meta {
+  color: var(--colour-muted);
+  font-size: 0.6875rem;
+  line-height: 1.3;
+}
+
+/* A title cell that navigates. Matches `.cell-muted`/`cell-date` in weight and size
+   so a table row does not change height where one cell became a link. */
+.cell-link {
+  color: var(--colour-text);
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.cell-link:hover {
+  color: var(--colour-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.cell-muted {
+  color: var(--colour-muted);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.cell-date {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+/* Inline row actions inside a table cell. Buttons are small and sit side by side;
+   `justify-content: flex-end` keeps them aligned under a right-aligned header. */
+.row-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.375rem;
+  white-space: nowrap;
+}
+
+/* -- Closing banner ---------------------------------------------------------- */
+
+/*
+ * The page's last words before the footer, and the one deliberately decorative
+ * element on the dashboard: no figure, no request, no claim about the library.
+ *
+ * Short on purpose. A banner that runs the full width of the main column and
+ * holds two paragraphs is a second welcome; at 75–100px with a single line of
+ * copy and one action it is a sign-off, which is what it is for. The accent is
+ * spent here because it is the only action on this row of the page — the CTA
+ * takes the accent as a bordered outline so the banner's own gradient stays the
+ * loudest thing about it.
+ */
+.dash-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+  /* 76px: the 75–90px band, and short enough that the banner reads as a sign-off
+     rather than as a second welcome. */
+  min-height: 4.75rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid color-mix(in srgb, var(--colour-accent) 18%, var(--colour-border));
+  border-radius: var(--radius);
+  /*
+   * The same blue→violet blend as the greeting, mirrored: it runs left to right so
+   * the violet lands behind the illustration and the link on the right rather than
+   * under the sentence on the left. Matching stops, opposite ends — the two banners
+   * bookend the column in the same two colours without looking like one card
+   * repeated.
+   */
+  background:
+    linear-gradient(
+      105deg,
+      var(--colour-welcome) 0%,
+      color-mix(in srgb, var(--tone-blue) 8%, var(--colour-welcome)) 55%,
+      color-mix(in srgb, var(--tone-purple) 7%, var(--colour-welcome)) 100%
+    ),
+    var(--colour-welcome);
+}
+
+.dash-banner__copy {
+  min-width: 0;
+}
+
+/* The artwork and the action travel together on the right, so the illustration
+   never ends up alone on a wrapped row beneath the sentence it decorates. */
+.dash-banner__aside {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  flex: 0 0 auto;
+}
+
+.dash-banner__art {
+  display: block;
+  width: auto;
+  height: 3rem;
+  max-width: none;
+  flex: 0 0 auto;
+}
+
+.dash-banner__title {
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--colour-text-strong);
+}
+
+.dash-banner__text {
+  margin: 0.25rem 0 0;
+  color: var(--colour-muted);
+  font-size: 0.8125rem;
+}
+
+.dash-banner__action {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex: 0 0 auto;
+  min-height: 2.25rem;
+  padding: 0 0.9rem;
+  border: 1px solid var(--colour-accent);
+  border-radius: var(--radius-sm);
+  background: var(--colour-surface);
+  color: var(--colour-accent);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition:
+    background-color 140ms ease,
+    color 140ms ease;
+}
+
+.dash-banner__action:hover {
+  background: var(--colour-accent);
+  color: var(--colour-accent-contrast);
+}
+
+.dash-banner__action:focus-visible {
+  outline: 2px solid var(--colour-accent);
+  outline-offset: 2px;
+}
+
+/* -- Footer ------------------------------------------------------------------ */
+
+.app-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: 1.25rem;
+  padding: 0.85rem 0 1.25rem;
+  border-top: 1px solid var(--colour-border);
+  color: var(--colour-muted);
+  font-size: 0.71875rem;
+}
+
+.app-footer__tagline {
+  color: var(--colour-muted);
+}
+
+/* -- Command palette --------------------------------------------------------- */
+
+.command {
+  border: 1px solid var(--colour-border);
+  border-radius: var(--radius);
+  background: var(--colour-surface);
+  color: var(--colour-text);
+  padding: 0;
+  width: min(34rem, 92vw);
+  max-height: 70vh;
+  overflow: hidden;
+  box-shadow: var(--shadow-raised);
+}
+
+.command::backdrop {
+  background: rgb(8 12 20 / 50%);
+}
+
+.command__panel {
+  display: flex;
+  max-height: 70vh;
+  flex-direction: column;
+}
+
+.command__search {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.7rem 0.85rem;
+  border-bottom: 1px solid var(--colour-border);
+  color: var(--colour-muted);
+}
+
+.command__search input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--colour-text);
+  font: inherit;
+  font-size: 0.9375rem;
+  padding: 0;
+}
+
+.command__search input:focus {
+  outline: none;
+}
+
+.command__results {
+  list-style: none;
+  margin: 0;
+  padding: 0.35rem;
+  overflow-y: auto;
+}
+
+.command__group {
+  padding: 0.5rem 0.5rem 0.2rem;
+  color: var(--colour-muted);
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.command__option {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.5rem 0.55rem;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.command__option:hover,
+.command__option[aria-selected='true'] {
+  background: var(--colour-sidebar-active);
+}
+
+.command__option .icon {
+  flex: 0 0 auto;
+}
+
+.command__option-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  line-height: 1.3;
+}
+
+.command__option-title {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.command__option-meta {
+  color: var(--colour-muted);
+  font-size: 0.6875rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.command__footer {
+  display: flex;
+  gap: 0.9rem;
+  padding: 0.45rem 0.85rem;
+  border-top: 1px solid var(--colour-border);
+  background: var(--colour-surface-sunken);
+  color: var(--colour-muted);
+  font-size: 0.625rem;
+}
+
+/* -- Bottom navigation (mobile) --------------------------------------------- */
+
+/*
+ * Only rendered below the mobile breakpoint, and it is a real `<nav>` with
+ * `aria-current`, not decorative tabs — the PWA's primary navigation on a phone.
+ */
+.bottom-nav {
+  display: none;
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 25;
+  border-top: 1px solid var(--colour-border);
+  background: var(--colour-surface);
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+.bottom-nav__list {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.bottom-nav__link {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.45rem 0.25rem;
+  color: var(--colour-muted);
+  font-size: 0.625rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.bottom-nav__link[aria-current='page'] {
+  color: var(--colour-accent);
+}
+
+/* -- Tablet ----------------------------------------------------------------- */
+
+/*
+ * Below 1024px the sidebar is not worth its width, so it becomes a drawer and the
+ * content takes the full window. The dashboard's right rail follows at the same
+ * point: a 16.5rem column beside a main column that has just lost 220px would
+ * leave the record side under 400px, so the rail drops beneath it instead.
+ */
+@media (max-width: 64rem) {
+  .shell {
+    grid-template-areas:
+      'topbar'
+      'content';
+    grid-template-columns: 1fr;
+    grid-template-rows: var(--topbar-height) 1fr;
+  }
+
+  .sidebar {
+    display: none;
+  }
+
+  .topbar__menu {
+    display: inline-grid;
+  }
+
+  /* The icon rail replaces the panel, so the content area regains roughly 150px —
+     which is what the dashboard's 62/38 split needs to keep the notice board above
+     300px. */
+  .shell--rail {
+    grid-template-columns: 4.5rem minmax(0, 1fr);
+    grid-template-areas:
+      'topbar topbar'
+      'sidebar content';
+  }
+
+  .shell--rail .sidebar {
+    display: flex;
+    padding-right: 0.5rem;
+    padding-left: 0.5rem;
+  }
+
+  .shell--rail .sidebar__brand {
+    justify-content: center;
+    padding-right: 0;
+    padding-left: 0;
+  }
+
+  .shell--rail .brand__copy,
+  .shell--rail .nav-section__title,
+  .shell--rail .sidebar__foot .sidebar__link-label {
+    display: none;
+  }
+
+  .shell--rail .sidebar__list {
+    align-items: center;
+  }
+
+  .shell--rail .sidebar__link {
+    width: 2.5rem;
+    justify-content: center;
+    padding: 0.35rem;
+  }
+
+  .shell--rail .sidebar__link-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .shell--rail .sidebar__collapse {
+    display: none;
+  }
+
+  /* The rail moves under the main column; the two summaries inside it stay
+     side by side, because there is still room for a pair at this width. */
+  .dash-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* The rail has dropped beneath the main column, so the row spans the whole
+     window again: five figures fit from ~730px rather than from ~1260px. The
+     six-figure variant is restated here because this `.stat-row` rule comes later
+     in the cascade than `.stat-row--six` and would otherwise flatten it back to
+     five and wrap the last card onto a row of its own. */
+  .stat-row {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .stat-row--six {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  /* `auto-fit` rather than four fixed tracks: the tile counts differ by role
+     (five for members and staff, seven for an administrator), and a fixed track
+     count always leaves a hole at the right of the short row. With `auto-fit` and
+     a 100px floor the track count reaches the tile count at this width, so the
+     empty tracks collapse and the last row stretches instead of gaping. */
+  .quick-grid {
+    grid-template-columns: repeat(auto-fit, minmax(6.25rem, 1fr));
+  }
+}
+
+/* -- Mobile ----------------------------------------------------------------- */
+
+@media (max-width: 48rem) {
+  .content {
+    padding: 1rem 1rem 4rem;
+  }
+
+  .app-footer {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.15rem;
+  }
+
+  .welcome {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.75rem;
+    min-height: 0;
+    padding: 0.9rem 1rem;
+  }
+
+  .welcome__title {
+    font-size: 1.125rem;
+  }
+
+  /* The illustration is the first thing to go: on a 375px screen it would take
+     40% of the banner to say nothing the greeting did not. */
+  .welcome__art {
+    display: none;
+  }
+
+  .stat-row,
+  .stat-row--six {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .quick-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  /* Below 48rem even the pair of summaries stops fitting: the main column is
+     around 500px, so each card would be ~240px and a donut plus its metrics does
+     not read at that size. */
+  .dash-duo {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* Covers drop to 44×68 so the card can stay horizontal at ~167px wide: the
+     copy keeps about 86px, enough for a two-line title without hyphenating. */
+  .book-card__cover {
+    width: 2.75rem;
+    height: 4.25rem;
+  }
+
+  .dash-banner {
+    min-height: 0;
+    padding: 0.75rem 0.9rem;
+  }
+
+  .dash-banner__art {
+    display: none;
+  }
+
+  /* One column, so the ring sits above its own figures rather than beside them.
+     `grid-template-columns` rather than `flex-direction`: `.performance` is a grid
+     (the ring's track has to stay exactly 8rem wide), and setting `flex-direction`
+     here would silently do nothing. `justify-self` centres it across the column —
+     `align-self` would only move it vertically within the row it now occupies. */
+  .performance {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.9rem;
+  }
+
+  .donut {
+    justify-self: center;
+  }
+
+  .topbar__heading {
+    display: none;
+  }
+
+  .topbar__search {
+    width: auto;
+    flex: 1 1 auto;
+  }
+
+  .kbd {
+    display: none;
+  }
+
+  .user-menu__copy {
+    display: none;
+  }
+
+  .bottom-nav {
+    display: block;
+  }
+
+  .calendar__day {
+    min-height: 2.125rem;
+  }
+}
+
+/*
+ * Below 360px — the narrowest phone still supported — three quick-access tiles per
+ * row leaves labels of ~60px, which wraps "Add Member" onto two lines. Two columns
+ * costs a row of height and buys an un-wrapped label.
+ */
+@media (max-width: 22.5rem) {
+  .quick-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* -- Forced colours ---------------------------------------------------------- */
+
+@media (forced-colors: active) {
+  /*
+   * Several widgets encode state in a background wash — the active navigation item,
+   * the today marker in the calendar, the donut track. All of that is discarded
+   * in forced-colours mode, so each needs a border to survive.
+   */
+  .sidebar__link--current,
+  .calendar__day--today,
+  .donut__svg,
+  .stat-card__icon,
+  .notice__icon,
+  .bar__fill {
+    forced-color-adjust: none;
+    border: 1px solid CanvasText;
+  }
+
+  .donut__value {
+    forced-color-adjust: none;
+    color: CanvasText;
+  }
+}
+
+/* -- Dashboard density refinements ----------------------------------------- */
+
+/*
+ * Density overrides for the dashboard.
+ *
+ * Gaps come from `.dash` and its grid children and are drawn from a four-step
+ * scale — 4, 8, 12, 16 and 20px — rather than from one number per component:
+ * 8px between figures, 12px inside a panel, 16px between neighbours, 20px
+ * between the page's blocks. Card padding sits at the same steps, so the eye
+ * learns one rhythm instead of re-measuring every time the layout changes.
+ */
+.dash-panel {
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+/*
+ * The subject each panel reports on, for the blend above.
+ *
+ * Seven hues across the page rather than one: blue for the shelf and for the
+ * inventory ring, green for what has already moved, violet for the calendar,
+ * amber for the dates that need attention, pink for the notice board and slate
+ * for the shortcuts. They are the same `--tone-*` tokens the icons and chips
+ * inside each panel already use, so the outside of a card and its contents share
+ * a colour instead of each inventing their own — and because the blend fades to
+ * surface well above the copy, the hue reads as a tint at the edge rather than
+ * as a coloured box.
+ */
+.dash-panel--shelf {
+  --panel-tint: var(--tone-blue);
+}
+
+.dash-panel--activity {
+  --panel-tint: var(--tone-green);
+}
+
+.dash-panel--calendar {
+  --panel-tint: var(--tone-purple);
+}
+
+.dash-panel--due {
+  --panel-tint: var(--tone-orange);
+}
+
+.dash-panel--notices {
+  --panel-tint: var(--tone-pink);
+}
+
+.dash-panel--actions {
+  --panel-tint: var(--tone-slate);
+}
+
+.dash-panel .card__header {
+  min-height: 2.5rem;
+  padding: 0.5rem 0.75rem;
+}
+
+.dash-panel .card__title {
+  font-size: 0.8125rem;
+}
+
+.dash-panel .card__body {
+  padding: 0.6rem 0.75rem;
+}
+
+.welcome {
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius-sm);
+  box-shadow: 0 2px 8px rgb(37 99 235 / 5%);
+}
+
+.welcome__title {
+  font-size: 1.25rem;
+}
+
+.welcome__aside {
+  margin-top: 0.5rem;
+}
+
+.welcome__art {
+  width: 6.5rem;
+  height: 4.5rem;
+}
+
+.stat-row {
+  gap: 0.5rem;
+}
+
+.stat-card {
+  column-gap: 0.55rem;
+  padding: 0.6rem 0.7rem;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.stat-card__icon {
+  width: 2rem;
+  height: 2rem;
+}
+
+.stat-card__value {
+  font-size: 1.25rem;
+}
+
+.notice {
+  gap: 0.55rem;
+  padding: 0.55rem 0.2rem;
+}
+
+.notice__icon {
+  width: 1.75rem;
+  height: 1.75rem;
+}
+
+.quick-grid {
+  gap: 0.5rem;
+}
+
+.quick-tile {
+  gap: 0.3rem;
+  padding: 0.5rem;
+}
+
+.quick-tile__icon {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+.quick-tile__label {
+  font-size: 0.6875rem;
+}
+
+.calendar__weekdays {
+  margin-bottom: 0.15rem;
+}
+
+.calendar__weekday {
+  padding: 0.2rem 0;
+  font-size: 0.6rem;
+}
+
+.dash-panel--calendar .card__body {
+  padding: 0.45rem 0.65rem 0.55rem;
+}
+
+/*
+ * 30px cells, with `aspect-ratio: auto` so the height is a height rather than
+ * whatever the column width happens to work out at.
+ *
+ * The base rule lets the cell be square, which is right when the card is narrow
+ * and wrong once the rail drops beneath the main column: a 900px-wide calendar
+ * would give each cell 128px of height. Pinned here the whole card lands at about
+ * 288px in a six-row month and 259 in a five-row one — the 260–290 band.
+ */
+.dash-panel--calendar .calendar__day {
+  height: 1.875rem;
+  min-height: 1.875rem;
+  aspect-ratio: auto;
+  font-size: 0.6875rem;
+}
+
+.dash-panel--calendar .calendar__day--due::after,
+.dash-panel--calendar .calendar__day--ready::after {
+  bottom: 0.1rem;
+  width: 0.2rem;
+  height: 0.2rem;
+}
+
+.dash-panel--calendar .calendar__legend {
+  gap: 0.55rem;
+  padding: 0.45rem 0.15rem 0;
+  margin-top: 0.25rem;
+}
+
+.dash-panel--calendar .calendar__legend-item {
+  gap: 0.25rem;
+  font-size: 0.625rem;
+}
+
+/*
+ * The performance card.
+ *
+ * White, hairlined and radius-matched like every other panel, plus a 200px floor.
+ * It used to carry a blue border, a diagonal wash across the surface and a tinted
+ * header — three signals that this card mattered more than the one beside it,
+ * none of which said anything the figures did not, and all of which put the only
+ * gradient on the page inside a grid of cards that are otherwise identical. The
+ * floor is what keeps the pair's shared bottom edge honest: the activity feed
+ * beside it is frequently an empty state worth about 170px, and without a minimum
+ * the row would collapse to that and leave the ring floating in a short card.
+ */
+.dash-panel--performance {
+  --panel-tint: var(--tone-blue);
+  min-height: 12.5rem;
+}
+
+.dash-panel--performance .card__body {
+  padding: 0.7rem 0.8rem;
+}
+
+.dash-panel--performance .performance {
+  gap: 1rem;
+}
+
+.dash-panel--performance .donut {
+  width: 6.5rem;
+  height: 6.5rem;
+}
+
+.dash-panel--performance .donut__svg circle:not(.donut__track) {
+  stroke-width: 12;
+}
+
+.dash-panel--performance .donut__track {
+  fill: none;
+  stroke-width: 12;
+}
+
+.dash-panel--performance .donut__value {
+  font-size: 1.2rem;
+}
+
+/*
+ * Equal-height cards whose empty state centres itself.
+ *
+ * `.dash-panel` is already `height: 100%`, so inside the duo both cards take the
+ * row's height and the row takes the taller of the two. When the activity feed
+ * resolves to an empty state it contributes only its message — around 170px
+ * against the ring's 200 — and the message would sit at the top of the card with
+ * a gap under it. Turning the card and its body into columns lets the empty state
+ * grow into the space, and `align-content: center` on `.state--empty` puts it on
+ * the vertical middle rather than leaving it stranded at the top.
+ *
+ * Column direction matters: as a row, a body holding two children — the borrowing
+ * panel's bars and its figures — would lay them side by side across half the card
+ * each.
+ */
+.dash-duo > .dash-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.dash-duo > .dash-panel > .card__body {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.dash-duo > .dash-panel > .card__body > .performance,
+.dash-duo > .dash-panel > .card__body > .state--empty {
+  flex: 1 1 auto;
+}
+
+@media (min-width: 64.01rem) {
+  .topbar__brand {
+    display: none;
+  }
+}
+
+.welcome__title {
+  /* The token, not a literal: `#1d4ed8` is the light theme's strong blue and
+     stays hard-coded through the dark theme, where it lands on a near-black
+     banner at roughly 2.4:1. */
+  color: var(--colour-accent-strong);
+}
+
+@media (max-width: 48rem) {
+  .welcome {
+    padding: 0.75rem 0.85rem;
+  }
+
+  .dash-panel--calendar .calendar__day {
+    height: 2.125rem;
+    min-height: 2.125rem;
+  }
+
+  .dash-panel--performance .performance {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: center;
+  }
+
+  .dash-panel--performance .performance__metrics {
+    width: 100%;
+  }
+}
+
+@media (forced-colors: active) {
+  .dash-panel,
+  .stat-card {
+    box-shadow: none;
+  }
+}
