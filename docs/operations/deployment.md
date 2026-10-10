@@ -168,6 +168,11 @@ the API. The two ends, and the cookies in between, are configured as follows.
   `VITE_API_BASE_URL` from `.env.production` in the repo, or from a
   `VITE_API_BASE_URL` environment variable set on the Vercel project
   (both work; the project/process value wins).
+- The SPA is a client-side router (`createBrowserRouter`), so Vercel needs the
+  catch-all rewrite in `apps/frontend/vercel.json` to `index.html`; without it
+  a hard refresh on a deep link (e.g. `/books/123`) returns Vercel's 404
+  instead of the shell. Real files (`/assets/*`, `/sw.js`, `/icon.svg`) still
+  serve because rewrites in `vercel.json` run after the filesystem check.
 
 **Backend environment** — the API host must admit the SPA's origins and make
 the cookies usable cross-site (current production SPA:
