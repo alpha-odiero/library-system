@@ -14,6 +14,9 @@ apps/frontend/dev-dist/
 .env
 .env.*
 !.env.example
+# Exception: this Vite file holds only PUBLIC build-time VITE_* values (inlined
+# into the browser bundle by definition) — never secrets.
+!apps/frontend/.env.production
 *.pem
 
 # Local storage / uploads

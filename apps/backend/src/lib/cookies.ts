@@ -1,4 +1,25 @@
-import type { Request } from 'express';
+import type { CookieOptions, Request } from 'express';
+import { env } from '../config/env.js';
+
+/**
+ * The `Secure` / `SameSite` pair shared by every authentication cookie.
+ *
+ * Kept in one place so the cookie written at sign-in, the CSRF cookie, and the
+ * matching `clearCookie` calls cannot drift — a clear whose attributes differ
+ * from the original is how a "logout does not actually log out" bug is born.
+ *
+ * `SameSite=None` is required when the SPA is served from a different site than
+ * the API (a Vercel/Netlify deploy pointing at this backend); `Lax` is stricter
+ * and correct for a same-site deploy, including the Vite dev proxy. The env
+ * schema refuses `none` unless `Secure` is on, because browsers drop such a
+ * cookie outright.
+ */
+export function authCookieOptions(): Pick<CookieOptions, 'secure' | 'sameSite'> {
+  return {
+    secure: env.COOKIE_SECURE,
+    sameSite: env.COOKIE_SAME_SITE,
+  };
+}
 
 /**
  * Cookie reading.

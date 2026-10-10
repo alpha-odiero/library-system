@@ -1,5 +1,5 @@
 import type { RoleCode } from '@lms/shared';
-import { api } from '../../lib/api';
+import { api, resetCsrfToken } from '../../lib/api';
 import type { MeResponse, LoginResult, RegisterResult } from '../../lib/contracts';
 
 /**
@@ -33,13 +33,24 @@ export function register(input: {
   return api.post<RegisterResult>('/auth/register', input);
 }
 
-export function logout() {
-  return api.post<void>('/auth/logout', {});
+export async function logout() {
+  // The server clears the CSRF cookie on the way out, so the cached,
+  // body-supplied token must be dropped with it or the next write would present
+  // a value the server no longer has a cookie to match.
+  try {
+    return await api.post<void>('/auth/logout', {});
+  } finally {
+    resetCsrfToken();
+  }
 }
 
 /** Revokes every session for the account, including this one. */
-export function logoutAll() {
-  return api.post<void>('/auth/logout-all', {});
+export async function logoutAll() {
+  try {
+    return await api.post<void>('/auth/logout-all', {});
+  } finally {
+    resetCsrfToken();
+  }
 }
 
 export function me() {

@@ -36,6 +36,17 @@ export type Paginated<T> = SuccessEnvelope<T[]> & { meta: PaginationMeta };
 export const API_BASE_URL = import.meta.env['VITE_API_BASE_URL'] ?? '/api/v1';
 const DEFAULT_TIMEOUT_MS = 15_000;
 
+/**
+ * The API's origin when `VITE_API_BASE_URL` is an absolute URL, otherwise `''`.
+ *
+ * Endpoints that sit outside the versioned prefix (`/health`) must be resolved
+ * against the API host, not the page's host. With a same-origin dev proxy a
+ * root-relative `/health` is correct, but a deployed SPA served from a different
+ * origin than the API would otherwise probe the static host instead of the
+ * backend.
+ */
+const API_ORIGIN = /^https?:\/\//i.test(API_BASE_URL) ? new URL(API_BASE_URL).origin : '';
+
 // Must match the backend's CSRF_COOKIE_NAME / CSRF_HEADER_NAME defaults
 // (apps/backend/src/config/env.ts). Overridable because the names are
 // configurable server-side; the VITE_ prefix is how Vite exposes them.
@@ -122,16 +133,45 @@ export class NetworkError extends Error {
 }
 
 /**
+ * A CSRF token learned from a response body.
+ *
+ * `document.cookie` cannot see a cookie the API set when the SPA is served from
+ * a different origin — cookies are scoped to the origin that set them, and
+ * cross-origin JavaScript cannot read them. The backend therefore returns the
+ * token in the `GET /auth/csrf` body as well as the cookie (see
+ * `apps/backend/src/modules/auth/auth.routes.ts`), and the client remembers it
+ * here. Same-origin deployments still fall back to reading the cookie.
+ */
+let csrfTokenFromResponse: string | undefined;
+
+/**
  * Reads the CSRF token from its cookie.
  *
- * The CSRF cookie is intentionally NOT HttpOnly — the client has to be able to
- * read it to echo it in a header. That is safe: the token is worthless without
- * the session cookie, which is HttpOnly, and a forged header requires a preflight.
+ * The CSRF cookie is intentionally NOT HttpOnly — a same-origin client has to be
+ * able to read it to echo it in a header. That is safe: the token is worthless
+ * without the session cookie, which is HttpOnly, and a forged header requires a
+ * successful CORS preflight.
  */
-function readCsrfToken(): string | undefined {
+function readCsrfCookie(): string | undefined {
   const prefix = `${CSRF_COOKIE}=`;
   const match = document.cookie.split('; ').find((entry) => entry.startsWith(prefix));
   return match ? decodeURIComponent(match.slice(prefix.length)) : undefined;
+}
+
+/** The body-supplied token wins when present; otherwise fall back to the cookie. */
+function readCsrfToken(): string | undefined {
+  return csrfTokenFromResponse ?? readCsrfCookie();
+}
+
+/**
+ * Drops the cached, body-supplied token.
+ *
+ * Called once a session ends: sign-out clears the CSRF cookie server-side, so a
+ * remembered token would be stale, and the next write would fail the
+ * double-submit check until the client re-bootstrapped.
+ */
+export function resetCsrfToken(): void {
+  csrfTokenFromResponse = undefined;
 }
 
 /**
@@ -160,12 +200,17 @@ let csrfBootstrap: Promise<void> | null = null;
 async function ensureCsrfToken(): Promise<void> {
   if (readCsrfToken()) return;
 
-  csrfBootstrap ??= apiFetch<unknown>('/auth/csrf', {
+  csrfBootstrap ??= apiFetch<{ csrfToken?: string }>('/auth/csrf', {
     // A public endpoint cannot 401, and a refresh attempt here would recurse
     // through the bootstrap itself.
     skipRefresh: true,
   })
-    .then(() => undefined)
+    .then((response) => {
+      // The cross-origin path: the cookie is unreadable from here, so the token
+      // comes from the body the server returns alongside it.
+      const token = response.data?.csrfToken;
+      if (typeof token === 'string' && token.length > 0) csrfTokenFromResponse = token;
+    })
     .finally(() => {
       csrfBootstrap = null;
     });
@@ -204,7 +249,7 @@ export interface RequestOptions {
 
 function buildUrl(path: string, query: RequestOptions['query'], absolute?: boolean): string {
   const normalised = path.startsWith('/') ? path : `/${path}`;
-  const base = absolute ? '' : API_BASE_URL;
+  const base = absolute ? API_ORIGIN : API_BASE_URL;
   const url = `${base}${normalised}`;
   if (!query) return url;
 

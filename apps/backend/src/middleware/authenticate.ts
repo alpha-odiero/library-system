@@ -1,10 +1,9 @@
 import type { Request, RequestHandler, Response } from 'express';
-import { randomUUID } from 'node:crypto';
 import type { AuthPrincipal } from '@lms/shared';
 import { env } from '../config/env.js';
 import { COOKIE_NAMES, COOKIE_PATHS } from '../config/constants.js';
 import { logger } from '../config/logger.js';
-import { readCookie } from '../lib/cookies.js';
+import { authCookieOptions, readCookie } from '../lib/cookies.js';
 import { unauthenticated } from '../lib/errors.js';
 import {
   resolveLiveSession,
@@ -121,14 +120,6 @@ export function currentPrincipal(req: Request): NonNullable<Request['auth']> {
 
 /* ── Cookie issuance ────────────────────────────────────────────────────────── */
 
-/** A random CSRF token. Not a secret; the client must be able to read it. */
-export function generateCsrfToken(): string {
-  // `randomUUID` is fine here: this token is a nonce checked for equality, not a
-  // bearer credential, and its only job is to be unguessable to a third-party
-  // site that cannot read our cookies.
-  return randomUUID();
-}
-
 /**
  * Sets the authentication cookies.
  *
@@ -139,8 +130,10 @@ export function generateCsrfToken(): string {
  *   secure    — HTTPS only. Required in production and enforced by the env
  *               schema.
  *   sameSite  — `Lax` sends the cookie on top-level navigations but not on
- *               cross-site subrequests, which is what blocks CSRF on state-
- *               changing POSTs without breaking ordinary link navigation.
+ *               cross-site subrequests, which blocks CSRF on state-changing
+ *               POSTs without breaking ordinary link navigation. A SPA served
+ *               from a DIFFERENT site than the API needs `None` instead — see
+ *               `authCookieOptions` and `COOKIE_SAME_SITE`.
  *   path      — the refresh cookie is scoped to `/api/v1/auth` so it is not
  *               attached to every API call, shrinking the window in which a
  *               leaked copy of it is useful.
@@ -156,29 +149,33 @@ export function generateCsrfToken(): string {
  * credential.
  */
 export function setAuthCookies(res: Response, issued: IssuedSession): void {
+  const base = authCookieOptions();
+
   res.cookie(COOKIE_NAMES.ACCESS, issued.access.token, {
+    ...base,
     httpOnly: true,
-    secure: env.COOKIE_SECURE,
-    sameSite: 'lax',
     path: COOKIE_PATHS.CSRF,
     expires: issued.access.expiresAt,
   });
 
   res.cookie(COOKIE_NAMES.REFRESH, issued.refreshToken, {
+    ...base,
     httpOnly: true,
-    secure: env.COOKIE_SECURE,
-    sameSite: 'lax',
     path: COOKIE_PATHS.REFRESH,
     expires: issued.refreshExpiresAt,
   });
 
-  // Not httpOnly: the client reads this and echoes it in a header.
-  res.cookie(env.CSRF_COOKIE_NAME, generateCsrfToken(), {
-    httpOnly: false,
-    secure: env.COOKIE_SECURE,
-    sameSite: 'lax',
-    path: COOKIE_PATHS.CSRF,
-  });
+  /**
+   * The CSRF cookie is deliberately NOT re-issued here.
+   *
+   * Every public entry point runs `issueCsrfToken` (which sets one only if
+   * absent) before the handler, so a cookie already exists. Rotating it at
+   * sign-in would invalidate the token a cross-origin client was handed in the
+   * `/auth/csrf` body: such a client cannot read the replacement from
+   * `document.cookie`, so its very next write would fail the double-submit
+   * check. Ownership of the CSRF cookie belongs to `issueCsrfToken` /
+   * `setCsrfCookie`, and this function must not touch it.
+   */
 }
 
 /**
@@ -190,11 +187,7 @@ export function setAuthCookies(res: Response, issued: IssuedSession): void {
  * misdiagnosed cookie bugs there is.
  */
 export function clearAuthCookies(res: Response): void {
-  const common = {
-    httpOnly: true,
-    secure: env.COOKIE_SECURE,
-    sameSite: 'lax',
-  } as const;
+  const common = { ...authCookieOptions(), httpOnly: true } as const;
 
   res.clearCookie(COOKIE_NAMES.ACCESS, { ...common, path: COOKIE_PATHS.CSRF });
   res.clearCookie(COOKIE_NAMES.REFRESH, { ...common, path: COOKIE_PATHS.REFRESH });

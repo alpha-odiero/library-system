@@ -38,7 +38,12 @@ export function securityHeaders(): RequestHandler[] {
         directives: csp,
       },
       crossOriginEmbedderPolicy: false,
-      crossOriginResourcePolicy: { policy: 'same-site' },
+      // The SPA is served from a different origin in production (see
+      // `FRONTEND_URL`), and a `same-site` resource policy would make the
+      // browser discard every cross-origin API response before the CORS check
+      // even runs. CORS remains the access control; `nosniff` (below) still
+      // blocks MIME confusion.
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
       referrerPolicy: { policy: 'no-referrer' },
       // `noSniff` + a strict policy blocks MIME-confusion attacks against the API.
       xContentTypeOptions: true,

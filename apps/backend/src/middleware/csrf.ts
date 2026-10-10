@@ -3,7 +3,7 @@ import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { env, corsAllowedOrigins } from '../config/env.js';
 import { COOKIE_PATHS, HEADER_CSRF, SAFE_METHODS } from '../config/constants.js';
 import { logger } from '../config/logger.js';
-import { readCookie } from '../lib/cookies.js';
+import { authCookieOptions, readCookie } from '../lib/cookies.js';
 import { AppError } from '../lib/errors.js';
 
 /**
@@ -16,12 +16,15 @@ import { AppError } from '../lib/errors.js';
  *
  * Three layers, in order of how much they actually contribute:
  *
- *   1. `SameSite=Lax` on the session cookie. A cross-site POST carries no cookie
- *      at all, which stops the classic attack outright. This is the primary
- *      control.
- *   2. The double-submit check below. Defence in depth — `Lax` behaviour differs
- *      across browsers and edge cases (a same-site subdomain, an old client), and
- *      a silent regression there would be invisible without a second check.
+ *   1. `SameSite` on the session cookie (default `Lax`). A cross-site POST
+ *      carries no cookie at all, which stops the classic attack outright. This is
+ *      the primary control — EXCEPT that a SPA served from a different site needs
+ *      `COOKIE_SAME_SITE=none` to receive the cookie at all, removing this layer
+ *      and leaving the two below as the controls.
+ *   2. The double-submit check below. The token never leaves the client as
+ *      anything the browser attaches automatically: it is read from the cookie or
+ *      the issued body and echoed in a header, and a cross-origin attacker can
+ *      neither read it nor set the header without a successful preflight.
  *   3. The CORS allowlist. A cross-origin request that cannot be read cannot
  *      preflight a custom header successfully.
  *
@@ -127,9 +130,8 @@ export function verifyCsrf(): RequestHandler {
 export function setCsrfCookie(res: Response): string {
   const token = randomUUID();
   res.cookie(env.CSRF_COOKIE_NAME, token, {
+    ...authCookieOptions(),
     httpOnly: false,
-    secure: env.COOKIE_SECURE,
-    sameSite: 'lax',
     path: COOKIE_PATHS.CSRF,
   });
   return token;

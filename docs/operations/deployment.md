@@ -149,6 +149,61 @@ so a load balancer needs no affinity. `trust proxy 1` means every replica must
 see the same proxy depth — an asymmetry between replicas produces inconsistent
 `req.ip` values, which changes which rate-limit bucket a request lands in.
 
+### Cross-origin SPA (Vercel / Netlify / custom domain → this API)
+
+The frontend is a static bundle, so it usually lives on a different origin than
+the API. The two ends, and the cookies in between, are configured as follows.
+
+**Frontend build** — the SPA must know where the API lives:
+
+- `VITE_API_BASE_URL=https://library-system-jdge.onrender.com/api/v1` (see
+  `apps/frontend/.env.production`; an environment variable set at the static
+  host overrides the file at build time). This is public — Vite inlines every
+  `VITE_*` value into the browser bundle, so it can never hold a secret.
+- The client bootstraps a CSRF token with `GET /api/v1/auth/csrf` and prefers
+  the token returned in the response body over `document.cookie`, because a
+  cross-origin script cannot read another origin's cookies. `GET /health` is
+  resolved against the API origin rather than the SPA's own host.
+- Deploy `apps/frontend` (root directory) on Vercel; the build reads
+  `VITE_API_BASE_URL` from `.env.production` in the repo, or from a
+  `VITE_API_BASE_URL` environment variable set on the Vercel project
+  (both work; the project/process value wins).
+
+**Backend environment** — the API host must admit the SPA's origins and make
+the cookies usable cross-site (current production SPA:
+`https://library-system-ashy-rho.vercel.app`):
+
+- `FRONTEND_URL=https://library-system-ashy-rho.vercel.app` (exactly the
+  browser origin, no path).
+- `CORS_EXTRA_ORIGINS=https://library-system-git-main-alphas-projects-8fa2ada8.vercel.app,https://library-system-5k5ssalna-alphas-projects-8fa2ada8.vercel.app`
+  for the current preview deployments. Previews receive a new origin per
+  deploy, so a future preview's origin must be appended here too (Vercel
+  previews are not enumerable in advance); otherwise the browser rejects it.
+- `COOKIE_SECURE=true` — a browser discards `SameSite=None` cookies without
+  Secure.
+- `COOKIE_SAME_SITE=none` — the only value that lets the browser attach the
+  session cookie to the SPA's cross-site requests. `lax` (the default) is
+  correct only when the SPA and API share a site (including the Vite dev proxy).
+- Leave `COOKIE_DOMAIN` empty: a host-only cookie scoped to the API origin is
+  correct for this topology, and a `Domain=` value would hand the cookie to
+  unrelated hosts.
+
+The startup schema refuses `COOKIE_SAME_SITE=none` without `COOKIE_SECURE=true`.
+
+**Caveat — third-party cookies.** Cross-site cookie auth depends on the browser
+accepting third-party cookies. Safari (ITP) and Firefox (ETP) block them by
+default, and Chrome has been phasing them out, so a cross-origin SPA can fail to
+keep a session in those browsers even though everything above is configured
+correctly. Two topologies avoid third-party cookies entirely:
+
+1. **Same-site hosting** — serve the SPA and the API from the same site (e.g.
+   both under `*.onrender.com`, or the API on the SPA's own domain) and keep
+   `COOKIE_SAME_SITE=lax`: cookies stay first-party.
+2. **Same-origin proxy** — have the static host rewrite `/api/*`, `/health`
+   and `/ready` to the API. The SPA keeps the relative `/api/v1` (no
+   `VITE_API_BASE_URL`), and `Set-Cookie` from the proxy response lands on the
+   SPA's origin.
+
 ### Secrets
 
 Injected from a secret manager at deploy time. Never in the image, never in the
@@ -227,7 +282,8 @@ that is a restore from backup — see
 - [ ] `JWT_SECRET` and `JWT_REFRESH_SECRET` differ, ≥ 32 characters
 - [ ] `ACCESS_TOKEN_TTL` ≤ 60 minutes
 - [ ] `COOKIE_SECURE=true`
-- [ ] `FRONTEND_URL` is `https://` and not `*`
+- [ ] `COOKIE_SAME_SITE` matches the topology (`none` for a cross-site SPA, `lax` for same-site)
+- [ ] `FRONTEND_URL` is `https://` and points at the real SPA origin, not `*`
 - [ ] `DATABASE_URL` uses `lms_app`, not a superuser
 - [ ] Database not publicly reachable
 - [ ] Backups configured **and a restore rehearsed**

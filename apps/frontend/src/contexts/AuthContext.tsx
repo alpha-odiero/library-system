@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from 'react';
 import type { PermissionCode, RoleCode } from '@lms/shared';
-import { setSessionLostHandler } from '../lib/api';
+import { resetCsrfToken, setSessionLostHandler } from '../lib/api';
 import { startRealtime, stopRealtime } from '../lib/realtime';
 import type { MeResponse } from '../lib/contracts';
 import * as authApi from '../features/auth/api';
@@ -136,6 +136,10 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
       setSession(null);
       setSessionExpired(true);
       setUnreachable(null);
+      // A refresh failed, which means the session — and with it the CSRF cookie —
+      // is gone. Forget the cached token so the next sign-in bootstraps a fresh,
+      // matching pair.
+      resetCsrfToken();
     });
     return () => setSessionLostHandler(() => undefined);
   }, []);

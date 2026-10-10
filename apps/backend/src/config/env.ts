@@ -31,6 +31,11 @@ const envSchema = z
     CORS_EXTRA_ORIGINS: z.string().optional(),
     COOKIE_DOMAIN: z.string().optional(),
     COOKIE_SECURE: boolFromEnv(false),
+    // `Lax` is correct when the SPA is served same-site as the API (including
+    // the dev proxy). A SPA on a DIFFERENT site (e.g. Vercel/Netlify pointing at
+    // this backend) needs `None` for the browser to attach the session cookie to
+    // its cross-site requests.
+    COOKIE_SAME_SITE: z.enum(['lax', 'strict', 'none']).default('lax'),
 
     // ── Database ────────────────────────────────────────────────────────────
     DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
@@ -110,6 +115,17 @@ const envSchema = z
     SESSION_PURGE_CRON: z.string().default('17 3 * * *'),
   })
   .superRefine((env, ctx) => {
+    // Applies in every environment: a browser rejects SameSite=None without
+    // Secure, turning a misconfiguration into "login silently does nothing"
+    // rather than a weaker-but-working policy. Failing at startup names it.
+    if (env.COOKIE_SAME_SITE === 'none' && !env.COOKIE_SECURE) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['COOKIE_SAME_SITE'],
+        message: 'COOKIE_SAME_SITE=none requires COOKIE_SECURE=true (browsers reject it otherwise)',
+      });
+    }
+
     if (env.NODE_ENV !== 'production') return;
 
     // A wildcard allowlist in production defeats credentialed CORS entirely.

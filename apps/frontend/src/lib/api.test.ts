@@ -1,5 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, api, getHealth, isPaginated, NetworkError, setSessionLostHandler } from './api';
+import {
+  ApiError,
+  api,
+  getHealth,
+  isPaginated,
+  NetworkError,
+  resetCsrfToken,
+  setSessionLostHandler,
+} from './api';
 
 /**
  * The API client is where untrusted server input enters the app and where
@@ -41,6 +49,9 @@ function mockFetch(responder: (call: FetchCall) => Response | Promise<Response>)
 beforeEach(() => {
   calls = [];
   stubCookie('');
+  // The body-supplied CSRF token is module state; clear it so one test's
+  // bootstrap cannot leak into the next.
+  resetCsrfToken();
 });
 
 afterEach(() => {
@@ -130,11 +141,30 @@ describe('CSRF protection', () => {
     // refusing here makes the misconfiguration visible. The request is still
     // made, so the failure has a request id to quote.
     stubCookie('session=xyz');
-    mockFetch(() => jsonResponse({ success: true, data: { csrfToken: 'issued' } }));
+    mockFetch(() => jsonResponse({ success: true, data: {} }));
 
     await expect(api.delete('/loans/1')).rejects.toThrow(NetworkError);
     expect(calls).toHaveLength(1);
     expect(calls[0]?.url).toContain('/auth/csrf');
+  });
+
+  it('uses the token from the bootstrap body when the cookie is unreadable (cross-origin)', async () => {
+    // A SPA served from a different origin than the API cannot read the CSRF
+    // cookie via document.cookie, so the backend returns the token in the body
+    // precisely for that case. This is the deployed topology: the SPA on a
+    // static host, the API on another origin.
+    stubCookie('');
+    mockFetch((call) => {
+      if (call.url.includes('/auth/csrf')) {
+        return jsonResponse({ success: true, data: { csrfToken: 'from-body' } });
+      }
+      return jsonResponse({ success: true, data: null });
+    });
+
+    await api.post('/loans', {});
+
+    const headers = calls[1]?.init.headers as Headers;
+    expect(headers.get('x-csrf-token')).toBe('from-body');
   });
 
   it('ignores unrelated cookies when locating the token', async () => {
