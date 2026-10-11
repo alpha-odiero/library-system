@@ -311,7 +311,7 @@ function useReveal(): RefObject<HTMLDivElement | null> {
 export function LandingPage(): ReactNode {
   const { theme, toggleTheme } = useTheme();
   const settings = usePublicSettings();
-  const orgName = settings?.['org.name'] ?? 'Soma360';
+  const orgName = settings?.['org.name'] || 'Soma360';
   const orgEmail = settings?.['org.email'];
   const orgPhone = settings?.['org.phone'];
   const [menuOpen, setMenuOpen] = useState(false);

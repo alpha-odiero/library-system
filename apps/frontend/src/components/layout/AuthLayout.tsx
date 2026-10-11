@@ -40,7 +40,7 @@ export function AuthLayout({
   usePageMeta({ title: `${title} · Soma360`, robots: 'noindex, follow' });
   // The landing-page link names the organisation, so it must not read "Learn more
   // about Soma360" on a library that has renamed itself in settings.
-  const orgName = usePublicSettings()?.['org.name'] ?? 'Soma360';
+  const orgName = usePublicSettings()?.['org.name'] || 'Soma360';
 
   return (
     <div className={['auth', imageStory && 'auth--image-story'].filter(Boolean).join(' ')}>

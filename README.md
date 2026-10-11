@@ -52,7 +52,8 @@ cp .env.example .env      # then set JWT_SECRET and JWT_REFRESH_SECRET
 # Start local PostgreSQL 16 and Redis on localhost
 npm run db:generate
 npm run db:migrate
-npm run db:seed
+npm run db:seed            # config only: roles, permissions, member types, settings
+npm run db:seed:demo       # optional: also plant the sample catalogue + demo logins
 
 # 4. Run
 npm run dev               # backend  → http://localhost:4000
@@ -78,10 +79,18 @@ start if they are equal.
 
 ### Seed data
 
-`npm run db:seed` creates the three system roles, all 80 permissions and their
-grants, member types with borrowing policies, a bootstrap administrator, and a
-small sample catalogue. It is **idempotent**, which CI verifies by running it
-twice.
+`npm run db:seed` is split into two tiers:
+
+- **Config (always):** the three system roles, all permissions and their grants,
+  member types with borrowing policies, and settings. Safe to re-run — it only
+  creates missing rows and **never** overwrites an administrator's tuned policy
+  or settings values.
+- **Demo (opt-in):** a sample library, branches, catalogue and `*@library.test`
+  logins, planted only by `npm run db:seed:demo` (or `SEED_DEMO_DATA=true`). A
+  plain `db:seed` can therefore never repopulate a database with demo data.
+
+Both tiers refuse to run when `NODE_ENV=production`. CI verifies idempotency by
+running the seed twice.
 
 Production never seeds — see [Deployment](./docs/operations/deployment.md).
 
@@ -99,7 +108,8 @@ Production never seeds — see [Deployment](./docs/operations/deployment.md).
 | `npm run format:check`      | Prettier **and** `prisma validate`          |
 | `npm run db:migrate`        | Create and apply a migration (development)  |
 | `npm run db:migrate:deploy` | Apply existing migrations only (production) |
-| `npm run db:seed`           | Idempotent seed                             |
+| `npm run db:seed`           | Seed config (roles, permissions, policies)  |
+| `npm run db:seed:demo`      | Seed config **plus** demo library/catalogue |
 | `npm run db:validate`       | Validate the Prisma schema                  |
 | `npm run db:drift`          | Diff migrations against a shadow database   |
 | `npm run db:invariants`     | Assert the integrity objects exist          |

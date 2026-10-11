@@ -133,9 +133,12 @@ export interface SettingSeed {
 
 export const SETTING_SEEDS: readonly SettingSeed[] = [
   // ── Organisation (public: needed before login to render branding) ────────
+  // Identity fields start empty on purpose: a fresh install must not fabricate
+  // a library name. The UI falls back to the product brand until an
+  // administrator sets these in Settings.
   {
     key: 'org.name',
-    value: 'Central Library',
+    value: '',
     valueType: 'string',
     category: 'organisation',
     description: 'Display name of the library',
@@ -143,7 +146,7 @@ export const SETTING_SEEDS: readonly SettingSeed[] = [
   },
   {
     key: 'org.email',
-    value: 'library@centrallibrary.org',
+    value: '',
     valueType: 'string',
     category: 'organisation',
     description: 'Public contact email',
@@ -151,7 +154,7 @@ export const SETTING_SEEDS: readonly SettingSeed[] = [
   },
   {
     key: 'org.phone',
-    value: '+254 20 222 4000',
+    value: '',
     valueType: 'string',
     category: 'organisation',
     description: 'Public contact phone',
@@ -159,7 +162,7 @@ export const SETTING_SEEDS: readonly SettingSeed[] = [
   },
   {
     key: 'org.address',
-    value: 'Library Road, Nairobi',
+    value: '',
     valueType: 'string',
     category: 'organisation',
     description: 'Postal address',

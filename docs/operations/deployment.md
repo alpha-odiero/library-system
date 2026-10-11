@@ -9,19 +9,25 @@ Environments, the build, migrations, and the production topology.
 | `NODE_ENV`         | `development`    | `test`                          | `production`                  |
 | Database           | Local PostgreSQL | Ephemeral PostgreSQL 16 service | Managed PostgreSQL            |
 | Cookies            | `Secure: false`  | n/a                             | **`Secure: true` — enforced** |
-| Seed data          | `db:seed`        | `db:seed`                       | **never**                     |
+| Seed data          | `db:seed`¹       | `db:seed`                       | **never**                     |
 | Source             | Working tree     | Committed                       | Committed, tagged image       |
 | CSRF / rate limits | enforced         | limits disabled                 | enforced                      |
 
 ### Production never seeds
 
-`npm run db:seed` is never run in production. It creates the three system roles,
-the permission registry, and a bootstrap administrator — which is exactly the
-wrong thing to run unattended against a real database.
+`npm run db:seed` is never run in production (it refuses when
+`NODE_ENV=production`). It seeds only reference configuration — the three system
+roles, the permission registry, member types and settings — and does so
+create-if-missing, never overwriting an operator's tuned values. Demo content (a
+sample library and `*@library.test` logins) is planted only by
+`npm run db:seed:demo`, which is strictly a development convenience.
 
-The bootstrap administrator is created deliberately, once, with a password
-supplied through the deployment secret store. Tracked in
-[Roadmap](../roadmap.md) as a pending bootstrap path.
+¹ `db:seed` at development creates config only; add the demo tier explicitly
+with `db:seed:demo`.
+
+A fresh production database is bootstrapped through **self-serve onboarding**:
+the first administrator registers at `/register`, supplying a library name, and
+the account, its library and a default branch are created together.
 
 ## The build
 
@@ -50,7 +56,8 @@ to do with the frontend.
 | `npm run format`            | Rewrite formatted files                        |
 | `npm run db:migrate`        | Create and apply a migration (development)     |
 | `npm run db:migrate:deploy` | Apply existing migrations only (production)    |
-| `npm run db:seed`           | Idempotent seed                                |
+| `npm run db:seed`           | Seed config (roles, permissions, policies)     |
+| `npm run db:seed:demo`      | Seed config **plus** demo library/catalogue    |
 | `npm run db:validate`       | Validate `schema.prisma`                       |
 | `npm run db:drift`          | Diff migrations against a shadow database      |
 | `npm run db:invariants`     | Assert the integrity objects exist             |

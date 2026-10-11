@@ -59,7 +59,7 @@ export function DashboardPage(): ReactNode {
   const settings = usePublicSettings();
   const { data, loading } = useDashboardData();
 
-  const orgName = settings?.['org.name'] ?? 'Soma360';
+  const orgName = settings?.['org.name'] || 'Soma360';
   const config = dashboardConfigFor(session?.roleCode);
   const isMember = config.variant === 'member';
   const pending = loading && !data;
