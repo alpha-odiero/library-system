@@ -311,9 +311,11 @@ export async function revokeAllForUser(userId: string, reason: RevocationReason)
  * session" into one 401 regardless of the reason, and a valid signature on a
  * revoked session is no more informative than a bad signature.
  *
- * The session row is joined to its user so status and deletion are checked in
- * the same round trip — a session whose account was deleted or suspended in the
- * last few milliseconds must not authenticate.
+ * Only the session row is read here. The account's status and deletion are
+ * enforced by `buildPrincipal`, which `authenticate` calls with this function's
+ * `userId` on every request and which fails closed on a missing, deleted, or
+ * non-ACTIVE user. Joining the user here would repeat that query on the hottest
+ * path in the system for a check the very next call already performs.
  */
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -343,7 +345,6 @@ export async function resolveLiveSession(accessToken: string): Promise<{
       userId: true,
       revokedAt: true,
       expiresAt: true,
-      user: { select: { id: true, status: true, deletedAt: true } },
     },
   });
 
@@ -354,10 +355,7 @@ export async function resolveLiveSession(accessToken: string): Promise<{
   // The token's subject must still match the session's owner. A mismatch means
   // either a signing-key compromise or a token crafted against a valid session
   // id; either way it is not a session this server issued.
-  if (claims.sub !== session.userId || session.user.id !== session.userId) return null;
-
-  if (session.user.deletedAt !== null) return null;
-  if (session.user.status !== 'ACTIVE') return null;
+  if (claims.sub !== session.userId) return null;
 
   return { sessionId: session.id, userId: session.userId };
 }

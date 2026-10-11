@@ -10,6 +10,7 @@ import {
 import type { PermissionCode, RoleCode } from '@lms/shared';
 import { resetCsrfToken, setSessionLostHandler } from '../lib/api';
 import { startRealtime, stopRealtime } from '../lib/realtime';
+import { clearReferenceCache } from '../lib/referenceCache';
 import type { MeResponse } from '../lib/contracts';
 import * as authApi from '../features/auth/api';
 import { classifySessionCheck } from './sessionCheck';
@@ -128,6 +129,15 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
       stopRealtime();
     }
   }, [signedIn]);
+
+  // Cached reference data — above all the branch list — is scoped to the signed-in
+  // user. Drop it whenever the identity changes, including on sign-out and session
+  // loss, so a picker on a shared browser never offers the previous account's
+  // branches to the next one.
+  const signedInUserId = session?.userId ?? null;
+  useEffect(() => {
+    clearReferenceCache();
+  }, [signedInUserId]);
 
   // The API client calls this when a refresh fails, which is the only reliable
   // moment to learn a session is gone: the user may have been idle for hours.

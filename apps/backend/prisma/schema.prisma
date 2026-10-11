@@ -929,6 +929,11 @@ model Loan {
   @@index([bookId, loanedAt])
   @@index([issuedBy])
   @@index([memberId, loanedAt])
+  /// List support: staff/global lists filter by status and order by loaned_at;
+  /// branch- and member-scoped lists filter on the scope key first.
+  @@index([status, loanedAt])
+  @@index([branchId, status, loanedAt])
+  @@index([memberId, status, loanedAt])
   @@map("loans")
 }
 
@@ -1002,6 +1007,11 @@ model Reservation {
   @@index([status, holdExpiresAt])
   @@index([branchId, status])
   @@index([fulfilledLoanId])
+  /// List support: reservations are ordered by reserved_at and filtered by
+  /// status, with branch/member scoping applied first when present.
+  @@index([status, reservedAt])
+  @@index([branchId, status, reservedAt])
+  @@index([memberId, status, reservedAt])
   @@map("reservations")
 }
 
@@ -1117,6 +1127,9 @@ model Fine {
   /// Declared here so it agrees with the migration engine's view of the schema;
   /// a Loan may now carry several fines, and this is the FK-side lookup index.
   @@index([loanId])
+  /// Member fine lists filter by status and order by assessed_at; [memberId, status]
+  /// alone still needed a sort. Extending it removes that sort.
+  @@index([memberId, status, assessedAt])
   @@map("fines")
 }
 
@@ -1173,6 +1186,9 @@ model Notification {
 
   @@index([userId, readAt, createdAt])
   @@index([type, createdAt])
+  /// "All notifications, newest first" (no read filter) — the unread-only path is
+  /// served by [userId, readAt, createdAt] above.
+  @@index([userId, createdAt])
   @@map("notifications")
 }
 

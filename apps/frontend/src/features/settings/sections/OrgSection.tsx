@@ -4,6 +4,7 @@ import { Card } from '../../../components/ui/Card';
 import { CheckboxField, TextField } from '../../../components/ui/Field';
 import { EmptyState } from '../../../components/ui/States';
 import { ApiError } from '../../../lib/api';
+import { clearReferenceCache } from '../../../lib/referenceCache';
 import { useToast } from '../../../contexts/ToastContext';
 import { updateSettings, type SettingDto } from '../api';
 import { draftFromValue, orgFieldsFor, parseOrgField, type OrgFieldDef } from '../fields';
@@ -116,6 +117,10 @@ export function OrgSection({
     setSaving(true);
     try {
       const response = await updateSettings(updates);
+      // A public setting (org name, contact details) may have just changed; drop
+      // the cached copy so the next screen refetches instead of showing the old
+      // value for the rest of the TTL.
+      clearReferenceCache();
       const saved = Object.fromEntries(
         response.data.settings.map((setting) => [setting.key, setting.value]),
       );

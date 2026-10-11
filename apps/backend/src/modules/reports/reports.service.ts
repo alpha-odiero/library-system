@@ -50,7 +50,9 @@ export async function librarySummary(principal: AuthPrincipal): Promise<LibraryS
   const copyScope = branchScopeFilter(principal, 'branchId');
   const memberScope = branchScopeFilter(principal, 'homeBranchId');
 
-  const [copies, loans, members, reservations, requests] = await Promise.all([
+  // All seven aggregates are independent; issuing them together keeps this to a
+  // single round trip's worth of latency instead of a second sequential batch.
+  const [copies, loans, members, reservations, requests, titles, branches] = await Promise.all([
     prisma.bookCopy.groupBy({
       by: ['status'],
       where: { ...copyScope, removedAt: null },
@@ -69,19 +71,18 @@ export async function librarySummary(principal: AuthPrincipal): Promise<LibraryS
         ...(principal.libraryScope ? { libraryId: principal.libraryScope } : {}),
       },
     }),
+    prisma.book.count({
+      where: {
+        deletedAt: null,
+        archivedAt: null,
+        copies: { some: { ...copyScope, removedAt: null } },
+      },
+    }),
+    prisma.branch.count({ where: branchScopeFilter(principal, 'id') }),
   ]);
 
   const copyCounts = statusCounts(copies);
   const loanCounts = statusCounts(loans);
-
-  const titles = await prisma.book.count({
-    where: {
-      deletedAt: null,
-      archivedAt: null,
-      copies: { some: { ...copyScope, removedAt: null } },
-    },
-  });
-  const branches = await prisma.branch.count({ where: branchScopeFilter(principal, 'id') });
 
   return {
     titles,
@@ -122,10 +123,13 @@ export async function circulationReport(principal: AuthPrincipal): Promise<Circu
       orderBy: { _count: { bookId: 'desc' } },
       take: 5,
     }),
-    prisma.loan.groupBy({
-      by: ['memberId'],
+    // Distinct member ids rather than a group-by: we only need the count of
+    // borrowers, so SELECT DISTINCT avoids materialising a per-member tally the
+    // caller throws away.
+    prisma.loan.findMany({
       where: { status: { in: ['ACTIVE', 'OVERDUE'] }, ...copyScope },
-      _count: { _all: true },
+      select: { memberId: true },
+      distinct: ['memberId'],
     }),
   ]);
 
