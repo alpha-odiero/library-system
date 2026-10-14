@@ -59,6 +59,17 @@ export interface AuthState {
 
 const AuthContext = createContext<AuthState | null>(null);
 
+/**
+ * Budget for the session bootstrap.
+ *
+ * The first `/auth/me` usually doubles as the request that wakes a sleeping API
+ * instance, and a free-tier cold start can take the better part of a minute. The
+ * client's default 15s is shorter than that, so a cold start would surface as
+ * "Cannot check your session" — an outage-looking message for what is really just
+ * a slow first load. The longer budget lets the check wait the instance out.
+ */
+const SESSION_BOOT_TIMEOUT_MS = 60_000;
+
 export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
   const [session, setSession] = useState<MeResponse | null>(null);
   const [initialising, setInitialising] = useState(true);
@@ -81,7 +92,7 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
 
   const load = useCallback(async (): Promise<LoadResult> => {
     try {
-      const response = await authApi.me();
+      const response = await authApi.me({ timeoutMs: SESSION_BOOT_TIMEOUT_MS });
       setSession(response.data);
       setSessionExpired(false);
       setUnreachable(null);

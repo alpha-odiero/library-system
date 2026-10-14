@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import type { PermissionCode, RoleCode } from '@lms/shared';
 import { useAuth } from '../contexts/AuthContext';
@@ -19,12 +19,32 @@ import { dashboardPathFor } from './roleRoutes';
  * guard reaches a page full of 403s and learns nothing.
  */
 
-/** Splash shown while `/auth/me` is in flight. */
+/**
+ * Splash shown while `/auth/me` is in flight.
+ *
+ * The API's first request is also the one that wakes a sleeping instance, and on
+ * a free tier that can take the better part of a minute. A splash that says only
+ * "restoring your session" for that long reads as a hung page, so after a short
+ * delay it explains the wait. The threshold is well above a warm round trip, so
+ * it never appears in the normal case.
+ */
 function SessionSplash({ label }: { label: string }): ReactNode {
+  const [slow, setSlow] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setSlow(true), 3000);
+    return () => clearTimeout(timer);
+  }, []);
+
   return (
     <div className="splash" role="status" aria-live="polite">
       <div className="splash__mark" aria-hidden="true" />
       <p className="splash__label">{label}</p>
+      {slow && (
+        <p className="splash__label">
+          Still starting up — the first visit can take up to a minute.
+        </p>
+      )}
     </div>
   );
 }
@@ -134,13 +154,18 @@ export function RequireRole({ roles }: { roles: readonly RoleCode[] }): ReactNod
  * Without this, a signed-in librarian who navigates to `/login` sees a login form
  * that silently fails, because the same-origin cookie is already set and the
  * credentials are not checked again.
+ *
+ * It deliberately does NOT hold these screens behind the session splash. They are
+ * the public entry points — the marketing page most of all — and blocking them on
+ * `/auth/me` means a cold API shows a splash instead of the product for however
+ * long the instance takes to wake. The session is still consulted: a signed-in
+ * visitor is redirected the moment the check resolves, so the only cost is a
+ * brief flash of the form for the rare signed-in user who opens `/login`.
  */
 export function RequireAnonymous(): ReactNode {
-  const { session, initialising, unreachable } = useAuth();
+  const { session, unreachable } = useAuth();
 
-  if (initialising) return <SessionSplash label="Restoring your session…" />;
-
-  // Nothing to redirect away from while the session is unknown — and bouncing to
+  // Nothing to redirect away from while the session is unknown, and bouncing to
   // /login is exactly the false "you are signed out" message this guard exists to
   // avoid. `RequireAuth` renders the retry affordance for the same condition.
   if (unreachable) return <Outlet />;

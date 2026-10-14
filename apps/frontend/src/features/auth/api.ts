@@ -53,8 +53,15 @@ export async function logoutAll() {
   }
 }
 
-export function me() {
-  return api.get<MeResponse>('/auth/me');
+/**
+ * `GET /auth/me` — the session bootstrap.
+ *
+ * `timeoutMs` is passed through so the initial boot check can tolerate a cold
+ * API instance (Render's free tier), which is slower to answer its first request
+ * than the client's default budget.
+ */
+export function me(options: { timeoutMs?: number } = {}) {
+  return api.get<MeResponse>('/auth/me', options);
 }
 
 export function forgotPassword(email: string) {
